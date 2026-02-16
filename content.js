@@ -446,6 +446,10 @@
 
       const result = await backendClient.generate({
         backendBaseUrl: (state.settings.backendBaseUrl || c.DEFAULT_SETTINGS.backendBaseUrl).trim(),
+        backendBaseUrlFallbacks: []
+          .concat(state.settings.backendBaseUrlFallbacks || [])
+          .concat(c.DEFAULT_SETTINGS.backendBaseUrlFallbacks || [])
+          .concat([c.DEFAULT_SETTINGS.backendBaseUrl]),
         reviewActionId: actionId,
         original: state.original,
         current: state.current

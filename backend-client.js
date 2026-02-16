@@ -3,12 +3,34 @@
 
   window.BabelReview = window.BabelReview || {};
 
+  class HttpStatusError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "HttpStatusError";
+    }
+  }
+
   function normalizeBaseUrl(value) {
     const raw = (value || "").trim();
     if (!raw) {
       return "";
     }
     return raw.replace(/\/+$/, "");
+  }
+
+  function uniq(values) {
+    const out = [];
+    for (const item of values || []) {
+      if (!out.includes(item)) {
+        out.push(item);
+      }
+    }
+    return out;
+  }
+
+  function buildBaseCandidates(primary, fallbacks) {
+    const values = [primary].concat(Array.isArray(fallbacks) ? fallbacks : []);
+    return uniq(values.map(normalizeBaseUrl).filter(Boolean));
   }
 
   async function postJson(url, payload) {
@@ -32,7 +54,7 @@
       const err =
         (data && typeof data.error === "string" && data.error) ||
         `HTTP ${response.status}: ${text.slice(0, 240)}`;
-      throw new Error(err);
+      throw new HttpStatusError(err);
     }
 
     if (!data || typeof data !== "object") {
@@ -42,28 +64,42 @@
     return data;
   }
 
-  async function prepare(args) {
-    const base = normalizeBaseUrl(args.backendBaseUrl);
-    if (!base) {
+  async function postJsonWithFallback(path, payload, baseCandidates) {
+    if (!Array.isArray(baseCandidates) || !baseCandidates.length) {
       throw new Error("Backend URL is required.");
     }
-    return postJson(`${base}/api/review/prepare`, {
+
+    const errors = [];
+    for (const base of baseCandidates) {
+      try {
+        return await postJson(`${base}${path}`, payload);
+      } catch (error) {
+        errors.push(`${base}: ${error instanceof Error ? error.message : String(error)}`);
+        if (error instanceof HttpStatusError) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(`Could not reach backend. Tried: ${errors.join(" | ")}`);
+  }
+
+  async function prepare(args) {
+    const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+    return postJsonWithFallback("/api/review/prepare", {
       reviewActionId: args.reviewActionId,
       original: args.original,
       current: args.current
-    });
+    }, baseCandidates);
   }
 
   async function generate(args) {
-    const base = normalizeBaseUrl(args.backendBaseUrl);
-    if (!base) {
-      throw new Error("Backend URL is required.");
-    }
-    return postJson(`${base}/api/review/generate`, {
+    const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+    return postJsonWithFallback("/api/review/generate", {
       reviewActionId: args.reviewActionId,
       original: args.original,
       current: args.current
-    });
+    }, baseCandidates);
   }
 
   window.BabelReview.backendClient = {

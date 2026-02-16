@@ -1,6 +1,6 @@
 # Review Interceptor Extension (Client + Server)
 
-Chrome extension that intercepts review APIs, stores baseline state locally, and injects a single in-panel `Magic Review` button that calls local backend (Bun + Elysia) for generation.
+Chrome extension that intercepts review APIs, stores baseline state locally, and injects a single in-panel `Magic Review` button that calls backend (Bun + Elysia) for generation.
 
 ## What It Does
 
@@ -31,7 +31,16 @@ Chrome extension that intercepts review APIs, stores baseline state locally, and
 1. `cd review-backend`
 2. `bun install`
 3. `bun run dev`
-4. Default backend URL is `http://127.0.0.1:3001`.
+4. Default backend URL is `https://reviewgen.ovh`.
+5. Automatic fallback URLs: `http://127.0.0.1:3001`, `http://localhost:3001`.
+
+## Domain Setup
+
+- Extension host permissions already include:
+  - `https://reviewgen.ovh/*`
+  - `http://127.0.0.1/*`
+  - `http://localhost/*`
+- So after server deployment, no extension code changes are required.
 
 ## Use
 

@@ -14,7 +14,11 @@
     STORAGE_KEY_SETTINGS: "babel.review.settings.v1",
     STORAGE_KEY_SELECTED: "babel.review.selected.v1",
     DEFAULT_SETTINGS: {
-      backendBaseUrl: "http://127.0.0.1:3001",
+      backendBaseUrl: "https://reviewgen.ovh",
+      backendBaseUrlFallbacks: [
+        "http://127.0.0.1:3001",
+        "http://localhost:3001",
+      ],
       overlayMinimized: true,
       overlayPosX: 24,
       overlayPosY: 96,
