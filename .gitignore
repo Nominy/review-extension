@@ -1,0 +1,16 @@
+.env
+.env.*
+
+dist/
+build/
+coverage/
+tmp/
+
+*.log
+*.tmp
+
+.DS_Store
+Thumbs.db
+
+# Packaged extension artifacts
+*.zip
