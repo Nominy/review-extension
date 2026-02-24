@@ -14,3 +14,4 @@ Thumbs.db
 
 # Packaged extension artifacts
 *.zip
+keys/*.pem

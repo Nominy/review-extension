@@ -102,8 +102,21 @@
     }, baseCandidates);
   }
 
+  async function submitTranscriptReviewActionAnalytics(args) {
+    const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+    return postJsonWithFallback("/api/trpc/transcriptions.submitTranscriptReviewAction", {
+      reviewActionId: args.reviewActionId,
+      original: args.original,
+      current: args.current,
+      inputBoxes: args.inputBoxes || {},
+      aiReview: args.aiReview || null,
+      metadata: args.metadata || {}
+    }, baseCandidates);
+  }
+
   window.BabelReview.backendClient = {
     prepare,
-    generate
+    generate,
+    submitTranscriptReviewActionAnalytics
   };
 })();

@@ -5,11 +5,12 @@ Chrome extension that intercepts review APIs, stores baseline state locally, and
 ## What It Does
 
 - Intercepts page-level `fetch` and `XMLHttpRequest`.
-- Filters URLs containing `claimNextReviewActionFromReviewQueue` and `getReviewActionDataById`.
+- Filters URLs containing `claimNextReviewActionFromReviewQueue`, `getReviewActionDataById`, and `submitTranscriptReviewAction`.
 - When claim-next is captured, extracts ID strictly from `actionId` / `reviewActionId` fields and auto-calls `getReviewActionDataById`.
 - Caches first `getReviewActionDataById` as authoritative `ORIGINAL`, and latest as `NEW`.
 - Injects one `Magic Review` button into Babel's review panel.
 - On click: refreshes latest reviewAction data, calls backend `/api/review/generate`, auto-fills grades and notes.
+- On transcript submit (`submitTranscriptReviewAction`): captures current review form inputs and sends analytics snapshot to backend `/api/trpc/transcriptions.submitTranscriptReviewAction`.
 - Keeps captured baseline/current in `chrome.storage.local` so `ORIGINAL` is preserved.
 
 ## Cookies / Auth
@@ -25,6 +26,21 @@ Chrome extension that intercepts review APIs, stores baseline state locally, and
 3. Click **Load unpacked**.
 4. Select folder: `review-interceptor-extension`.
 5. Open `https://dashboard.babel.audio`.
+
+## Build CRX
+
+```bash
+cd review-interceptor-extension
+npm run build:crx
+```
+
+Outputs:
+- `dist/review-interceptor-extension.crx`
+- `keys/review-interceptor-extension.pem` (created on first build, then reused)
+
+Notes:
+- Uses local Chrome/Chromium `--pack-extension`.
+- If auto-detection fails, set `CHROME_PATH` to browser executable.
 
 ## Run Backend (Bun)
 

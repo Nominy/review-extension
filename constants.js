@@ -6,6 +6,7 @@
     TARGET_NEEDLES: [
       "claimNextReviewActionFromReviewQueue",
       "getReviewActionDataById",
+      "submitTranscriptReviewAction",
     ],
     EVENT_SOURCE: "babel-review-interceptor",
     COMMAND_SOURCE: "babel-review-overlay",

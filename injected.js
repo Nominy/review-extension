@@ -15,7 +15,8 @@
 
   const defaultTargetNeedles = [
     "claimNextReviewActionFromReviewQueue",
-    "getReviewActionDataById"
+    "getReviewActionDataById",
+    "submitTranscriptReviewAction"
   ];
   const claimNeedle = "claimNextReviewActionFromReviewQueue";
   const reviewDataNeedle = "getReviewActionDataById";

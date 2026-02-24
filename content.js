@@ -19,6 +19,7 @@
     reviewActionId: "",
     original: null,
     current: null,
+    lastAiReview: null,
     generating: false,
     waiters: [],
     settings: { ...c.DEFAULT_SETTINGS }
@@ -235,6 +236,13 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function getBackendBaseCandidates() {
+    return []
+      .concat((state.settings && state.settings.backendBaseUrlFallbacks) || [])
+      .concat((c.DEFAULT_SETTINGS && c.DEFAULT_SETTINGS.backendBaseUrlFallbacks) || [])
+      .concat([(c.DEFAULT_SETTINGS && c.DEFAULT_SETTINGS.backendBaseUrl) || ""]);
+  }
+
   async function setRating(root, category, score) {
     const prefix = RATING_PREFIX_BY_CATEGORY[category];
     if (!prefix) return false;
@@ -333,6 +341,78 @@
     };
   }
 
+  function collectInputBoxesSnapshot() {
+    const root = findReviewContainer() || document;
+    const categories = {};
+
+    for (const category of Object.keys(RATING_PREFIX_BY_CATEGORY)) {
+      const card = findCardByPrefix(root, category);
+      if (!card) continue;
+
+      const textarea = card.querySelector('textarea[placeholder="Provide specific feedback..."]');
+      categories[category] = {
+        score: getSelectedScore(root, category),
+        note: textarea && typeof textarea.value === "string" ? textarea.value : ""
+      };
+    }
+
+    const notes = Array.from(
+      root.querySelectorAll('textarea[placeholder="Provide specific feedback..."]')
+    ).map((el, idx) => ({
+      index: idx,
+      note: typeof el.value === "string" ? el.value : ""
+    }));
+
+    return {
+      categories,
+      notes
+    };
+  }
+
+  async function submitTranscriptReviewActionAnalytics(entry) {
+    if (!entry || entry.endpoint !== "submitTranscriptReviewAction") {
+      return;
+    }
+
+    const actionId =
+      (typeof entry.extractedReviewActionId === "string" && entry.extractedReviewActionId) ||
+      state.reviewActionId ||
+      getReviewActionIdFromUrl();
+    if (!actionId || !state.original) {
+      return;
+    }
+
+    const current = state.current || state.original;
+    const inputBoxes = collectInputBoxesSnapshot();
+
+    try {
+      await backendClient.submitTranscriptReviewActionAnalytics({
+        backendBaseUrl: (state.settings.backendBaseUrl || c.DEFAULT_SETTINGS.backendBaseUrl).trim(),
+        backendBaseUrlFallbacks: getBackendBaseCandidates(),
+        reviewActionId: actionId,
+        original: state.original,
+        current,
+        inputBoxes,
+        aiReview: state.lastAiReview,
+        metadata: {
+          source: "review-interceptor-extension",
+          capturedAt: new Date().toISOString(),
+          trpcStatus: entry.status,
+          trpcOk: entry.ok,
+          trpcUrl: entry.url || "",
+          trpcMethod: entry.method || "",
+          trpcDurationMs: entry.durationMs
+        }
+      });
+    } catch (error) {
+      console.warn(
+        `[babel-review] failed to submit submitTranscriptReviewAction analytics: ${
+          error && error.message ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
   function resolveWaiters(actionId) {
     const pending = [];
     for (const waiter of state.waiters) {
@@ -357,6 +437,10 @@
   }
 
   function handleCapturedEntry(entry) {
+    if (entry && entry.endpoint === "submitTranscriptReviewAction") {
+      void submitTranscriptReviewActionAnalytics(entry);
+    }
+
     const normalized = parser.extractNormalizedFromEntry(entry);
     if (!normalized) {
       return;
@@ -446,14 +530,12 @@
 
       const result = await backendClient.generate({
         backendBaseUrl: (state.settings.backendBaseUrl || c.DEFAULT_SETTINGS.backendBaseUrl).trim(),
-        backendBaseUrlFallbacks: []
-          .concat(state.settings.backendBaseUrlFallbacks || [])
-          .concat(c.DEFAULT_SETTINGS.backendBaseUrlFallbacks || [])
-          .concat([c.DEFAULT_SETTINGS.backendBaseUrl]),
+        backendBaseUrlFallbacks: getBackendBaseCandidates(),
         reviewActionId: actionId,
         original: state.original,
         current: state.current
       });
+      state.lastAiReview = result && result.llm ? result.llm : null;
 
       const feedback =
         result && result.llm && Array.isArray(result.llm.feedback) ? result.llm.feedback : [];
