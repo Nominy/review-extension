@@ -9,7 +9,7 @@ Chrome extension that intercepts review APIs, stores baseline state locally, and
 - When claim-next is captured, extracts ID strictly from `actionId` / `reviewActionId` fields and auto-calls `getReviewActionDataById`.
 - Caches first `getReviewActionDataById` as authoritative `ORIGINAL`, and latest as `NEW`.
 - Injects one `Magic Review` button into Babel's review panel.
-- On click: refreshes latest reviewAction data, calls backend `/api/review/generate`, auto-fills grades and notes.
+- On click: refreshes latest reviewAction data, calls backend `/api/review/generate`, auto-fills notes.
 - On transcript submit (`submitTranscriptReviewAction`): captures current review form inputs and sends analytics snapshot to backend `/api/trpc/transcriptions.submitTranscriptReviewAction`.
 - Keeps captured baseline/current in `chrome.storage.local` so `ORIGINAL` is preserved.
 
@@ -63,7 +63,7 @@ Notes:
 - Enter review mode to trigger claim-next and auto fetch action data.
 - Open the Babel review feedback panel.
 - Click `Magic Review`.
-- Wait for spinner; scores and notes are auto-applied into category fields.
+- Wait for spinner; notes are auto-applied into category fields.
 
 ## Module Layout
 

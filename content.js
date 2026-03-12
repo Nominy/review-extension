@@ -25,9 +25,6 @@
     settings: { ...c.DEFAULT_SETTINGS }
   };
   let persistTimer = null;
-  const RATING_CLICK_DELAY_MS = 90;
-  const RATING_PASS_DELAY_MS = 120;
-  const MAX_RATING_PASSES = 5;
   const RATING_PREFIX_BY_CATEGORY = {
     "Word Accuracy": "wordAccuracy",
     "Timestamp Accuracy": "timestampAccuracy",
@@ -199,71 +196,11 @@
     }
   }
 
-  function triggerClick(el) {
-    if (!el) return;
-    try {
-      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-    } catch (_) {
-      // Ignore synthetic mouse event failures and fallback to click.
-    }
-    el.click();
-  }
-
-  function isRadioSelected(el) {
-    if (!el) return false;
-    const ariaChecked = el.getAttribute ? el.getAttribute("aria-checked") : "";
-    if (ariaChecked === "true") return true;
-    const dataState = el.getAttribute ? el.getAttribute("data-state") : "";
-    return dataState === "checked";
-  }
-
-  function getSelectedScore(root, category) {
-    const prefix = RATING_PREFIX_BY_CATEGORY[category];
-    if (!prefix) return null;
-
-    for (let score = 1; score <= 3; score += 1) {
-      const id = `${prefix}-${score}`;
-      const radio = root.querySelector(`#${CSS.escape(id)}`) || document.getElementById(id);
-      if (radio && isRadioSelected(radio)) {
-        return score;
-      }
-    }
-    return null;
-  }
-
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   function getBackendBaseCandidates() {
     return []
       .concat((state.settings && state.settings.backendBaseUrlFallbacks) || [])
       .concat((c.DEFAULT_SETTINGS && c.DEFAULT_SETTINGS.backendBaseUrlFallbacks) || [])
       .concat([(c.DEFAULT_SETTINGS && c.DEFAULT_SETTINGS.backendBaseUrl) || ""]);
-  }
-
-  async function setRating(root, category, score) {
-    const prefix = RATING_PREFIX_BY_CATEGORY[category];
-    if (!prefix) return false;
-
-    const scoreStr = String(score);
-    const targetId = `${prefix}-${scoreStr}`;
-    const selector = `label[for="${CSS.escape(targetId)}"]`;
-    const label = root.querySelector(selector) || document.querySelector(selector);
-    if (!label) return false;
-
-    triggerClick(label);
-    await sleep(RATING_CLICK_DELAY_MS);
-
-    const radio = document.getElementById(targetId);
-    if (!radio) return true;
-    if (isRadioSelected(radio)) return true;
-
-    // React/Radix state can settle right after click; retry once.
-    triggerClick(label);
-    await sleep(RATING_CLICK_DELAY_MS);
-    return isRadioSelected(radio);
   }
 
   function findCardByPrefix(root, category) {
@@ -291,13 +228,12 @@
     for (const item of feedback) {
       if (!item || typeof item !== "object") continue;
       const category = typeof item.category === "string" ? item.category.trim() : "";
-      const score = Number(item.score);
       const note = typeof item.note === "string" ? item.note : "";
-      if (!category || !Number.isFinite(score) || !note) continue;
+      if (!category || !note) continue;
 
       const card = findCardByPrefix(root, category);
       if (!card) continue;
-      targets.push({ category, score, card, note: note.slice(0, 500) });
+      targets.push({ category, card, note: note.slice(0, 500) });
     }
 
     for (const target of targets) {
@@ -309,35 +245,8 @@
       notesApplied += 1;
     }
 
-    let unresolved = targets;
-    for (let pass = 1; pass <= MAX_RATING_PASSES && unresolved.length; pass += 1) {
-      for (const target of unresolved) {
-        await setRating(root, target.category, target.score);
-        await sleep(50);
-      }
-
-      await sleep(RATING_PASS_DELAY_MS);
-
-      const nextUnresolved = [];
-      for (const target of unresolved) {
-        const selected = getSelectedScore(root, target.category);
-        if (selected !== target.score) {
-          nextUnresolved.push(target);
-        }
-      }
-      unresolved = nextUnresolved;
-    }
-
-    let matchedRatings = 0;
-    for (const target of targets) {
-      if (getSelectedScore(root, target.category) === target.score) {
-        matchedRatings += 1;
-      }
-    }
-
     return {
-      applied: matchedRatings || notesApplied,
-      unresolvedCategories: unresolved.map((t) => t.category)
+      applied: notesApplied
     };
   }
 
@@ -351,7 +260,6 @@
 
       const textarea = card.querySelector('textarea[placeholder="Provide specific feedback..."]');
       categories[category] = {
-        score: getSelectedScore(root, category),
         note: textarea && typeof textarea.value === "string" ? textarea.value : ""
       };
     }
@@ -546,11 +454,6 @@
       const resultApply = await applyFeedbackToForm(feedback);
       if (!resultApply.applied) {
         throw new Error("Could not find review form fields to apply feedback.");
-      }
-      if (resultApply.unresolvedCategories.length) {
-        throw new Error(
-          `Could not lock grades for: ${resultApply.unresolvedCategories.join(", ")}`
-        );
       }
 
       setButtonState("done", `Applied (${resultApply.applied})`);
