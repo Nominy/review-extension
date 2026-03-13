@@ -137,8 +137,8 @@ export interface ReviewSessionCard {
   type: string;
   description?: string;
   summary?: string;
-  beforeText?: string | null;
-  afterText?: string | null;
+  /** Compact evidence: the exact diff/summary the LLM classified */
+  evidence?: string | null;
   categories: string[];
   matchedTemplateId?: string | null;
   templateTitle?: string | null;

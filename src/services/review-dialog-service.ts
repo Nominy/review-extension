@@ -572,31 +572,22 @@ function ensureStyles(): void {
       display: block !important;
     }
 
-    /* ── Evidence (before/after) ──────────────────────────── */
+    /* ── Evidence (inline diff) ─────────────────────────── */
     #${ROOT_ID} .babel-review-evidence[hidden] { display: none !important; }
     #${ROOT_ID} .babel-review-evidence {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 8px;
       animation: babel-dlg-fade-in 180ms ease-out;
     }
-    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="before"] {
-      border-color: rgba(239, 68, 68, 0.18);
-      background: linear-gradient(180deg, #fef8f8 0%, #ffffff 100%);
+    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="diff"] {
+      border-color: rgba(99, 102, 241, 0.2);
+      background: linear-gradient(180deg, #fafafe 0%, #ffffff 100%);
       overflow: visible;
       max-height: none;
     }
-    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="before"] .babel-review-block-title {
-      color: #dc2626;
-    }
-    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="after"] {
-      border-color: rgba(34, 197, 94, 0.2);
-      background: linear-gradient(180deg, #f7fef9 0%, #ffffff 100%);
-      overflow: visible;
-      max-height: none;
-    }
-    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="after"] .babel-review-block-title {
-      color: #16a34a;
+    #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="diff"] .babel-review-block-title {
+      color: #6366f1;
     }
 
     /* ── Textareas ───────────────────────────────────────── */
@@ -809,9 +800,6 @@ function ensureStyles(): void {
         grid-column: 1 / -1;
         justify-self: start;
       }
-      #${ROOT_ID} .babel-review-evidence {
-        grid-template-columns: 1fr;
-      }
       #${ROOT_ID} .babel-review-dialog-footer {
         padding: 10px 16px;
         flex-wrap: wrap;
@@ -859,27 +847,19 @@ function deriveSummary(card: ReviewSessionData['cards'][number]): string {
   }
 }
 
-function deriveEvidence(card: ReviewSessionData['cards'][number]): {
-  beforeText: string;
-  afterText: string;
-} | null {
-  const beforeText = String(card.beforeText || '').trim();
-  const afterText = String(card.afterText || '').trim();
-  if (beforeText || afterText) {
-    return { beforeText, afterText };
+function deriveEvidence(card: ReviewSessionData['cards'][number]): string | null {
+  const evidence = String(card.evidence || '').trim();
+  if (evidence) {
+    return evidence;
   }
 
-  const description = String(card.description || '');
-  // Use greedy match so embedded quotes don't cause premature cutoff
-  const match = description.match(/"([\s\S]*)"\s*(?:->|→)\s*"([\s\S]*)"/u);
-  if (!match) {
-    return null;
+  // Fallback: use description if it looks like a diff
+  const description = String(card.description || '').trim();
+  if (description) {
+    return description;
   }
 
-  return {
-    beforeText: match[1],
-    afterText: match[2]
-  };
+  return null;
 }
 
 function renderSuggestionList(suggestions: ReviewSessionSuggestion[], busy: boolean): string {
@@ -990,11 +970,8 @@ function buildMarkup(state: DialogState): string {
                   `<div class="babel-review-evidence" data-evidence-id="${escapeHtml(cardId)}" ${
                     evidenceOpen ? '' : 'hidden'
                   }>`,
-                  `<div class="babel-review-block" data-side="before"><div class="babel-review-block-title">Before</div><div class="babel-review-block-text">${escapeHtml(
-                    evidence.beforeText || 'No prior text.'
-                  )}</div></div>`,
-                  `<div class="babel-review-block" data-side="after"><div class="babel-review-block-title">After</div><div class="babel-review-block-text">${escapeHtml(
-                    evidence.afterText || 'No updated text.'
+                  `<div class="babel-review-block" data-side="diff"><div class="babel-review-block-title">Evidence (what the LLM saw)</div><div class="babel-review-block-text">${escapeHtml(
+                    evidence
                   )}</div></div>`,
                   '</div>'
                 ].join('')
@@ -1139,6 +1116,112 @@ export function createReviewDialogService() {
     root.innerHTML = state.open ? buildMarkup(state) : '';
     if (state.open) {
       restoreScroll(root, scroll);
+    }
+  }
+
+  /* ── Surgical DOM patching (no full innerHTML rebuild) ── */
+
+  /** Returns true if the dialog is open with content (not in loading state). */
+  function canPatch(): boolean {
+    if (!state.open || state.loading) {
+      return false;
+    }
+    const root = document.getElementById(ROOT_ID) as HTMLDivElement | null;
+    return !!root && !!root.querySelector('.babel-review-dialog-status');
+  }
+
+  /** Patch just the status bar text + data attributes. */
+  function patchStatusBar(): void {
+    const root = document.getElementById(ROOT_ID) as HTMLDivElement | null;
+    if (!root) {
+      return;
+    }
+    const statusEl = root.querySelector<HTMLElement>('.babel-review-dialog-status');
+    if (!statusEl) {
+      return;
+    }
+    statusEl.dataset.error = String(state.error);
+    statusEl.dataset.busy = String(state.busy);
+    // Keep the dot span, replace text
+    const dot = statusEl.querySelector('.babel-status-dot');
+    statusEl.textContent = '';
+    if (dot) {
+      statusEl.appendChild(dot);
+    } else {
+      const newDot = document.createElement('span');
+      newDot.className = 'babel-status-dot';
+      statusEl.appendChild(newDot);
+    }
+    statusEl.appendChild(document.createTextNode(state.status));
+  }
+
+  /** Toggle disabled state on all interactive elements (buttons, textareas). */
+  function patchBusyState(): void {
+    const root = document.getElementById(ROOT_ID) as HTMLDivElement | null;
+    if (!root) {
+      return;
+    }
+
+    // Action buttons in the header and pane heads
+    const actionBtns = Array.from(root.querySelectorAll<HTMLButtonElement>(
+      '[data-action="finalize-skip"], [data-action="finalize-apply"], ' +
+      '[data-action="refresh-session"], [data-action="generate-suggestions"], ' +
+      '[data-action="approve-suggestion"], [data-action="reject-suggestion"]'
+    ));
+    for (const btn of actionBtns) {
+      // Suggestion buttons: disabled if busy OR not pending
+      const action = btn.dataset.action || '';
+      if (action === 'approve-suggestion' || action === 'reject-suggestion') {
+        const article = btn.closest<HTMLElement>('.babel-review-suggestion');
+        const decision = article?.dataset.decision || 'pending';
+        btn.disabled = state.busy || decision !== 'pending';
+      } else {
+        btn.disabled = state.busy || !state.session;
+      }
+    }
+
+    // Textareas
+    const textareas = Array.from(root.querySelectorAll<HTMLTextAreaElement>(
+      '.babel-review-row textarea, .babel-review-pane textarea'
+    ));
+    for (const ta of textareas) {
+      ta.disabled = state.busy;
+    }
+  }
+
+  /** Rebuild only the suggestion list inside the Improve pane. */
+  function patchSuggestionList(): void {
+    const root = document.getElementById(ROOT_ID) as HTMLDivElement | null;
+    if (!root) {
+      return;
+    }
+    const listEl = root.querySelector<HTMLElement>('.babel-review-suggestion-list');
+    if (listEl) {
+      listEl.innerHTML = renderSuggestionList(state.session?.suggestions || [], state.busy);
+    }
+    // Update tab badge counts
+    const tabs = Array.from(root.querySelectorAll<HTMLElement>('.babel-review-tab'));
+    for (const tab of tabs) {
+      const tabName = tab.dataset.tab;
+      let count = 0;
+      if (tabName === 'review') {
+        count = state.session?.cards?.length || 0;
+      } else if (tabName === 'improve') {
+        count = state.session?.suggestions?.length || 0;
+      }
+      const badge = tab.querySelector('.babel-tab-count');
+      if (count > 0) {
+        if (badge) {
+          badge.textContent = String(count);
+        } else {
+          const newBadge = document.createElement('span');
+          newBadge.className = 'babel-tab-count';
+          newBadge.textContent = String(count);
+          tab.appendChild(newBadge);
+        }
+      } else if (badge) {
+        badge.remove();
+      }
     }
   }
 
@@ -1357,18 +1440,38 @@ export function createReviewDialogService() {
       open();
     },
     renderSession(session: ReviewSessionData, status = 'Session ready.'): void {
+      const wasLoading = state.loading;
       state.session = session;
       state.title = 'Interactive Review';
       state.status = status;
       state.error = false;
       state.loading = false;
       state.busy = false;
-      open();
+
+      // First render after loading → must do a full rebuild to swap
+      // from the loading spinner to the tabbed content layout.
+      if (wasLoading || !canPatch()) {
+        open();
+        return;
+      }
+
+      // Surgical: update status bar, suggestion list, busy/disabled,
+      // and tab badges — without touching scroll, expanded rows, or
+      // textarea content.
+      patchStatusBar();
+      patchSuggestionList();
+      patchBusyState();
     },
     setBusy(nextBusy: boolean, status?: string): void {
       state.busy = nextBusy;
       if (status) {
         state.status = status;
+      }
+
+      if (canPatch()) {
+        patchStatusBar();
+        patchBusyState();
+        return;
       }
       render();
     },
@@ -1378,6 +1481,14 @@ export function createReviewDialogService() {
       if (isError) {
         state.loading = false;
         state.busy = false;
+      }
+
+      if (canPatch()) {
+        patchStatusBar();
+        if (isError) {
+          patchBusyState();
+        }
+        return;
       }
       render();
     },
