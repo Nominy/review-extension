@@ -24,12 +24,12 @@ const tasks = [
   },
   {
     ...shared,
-    entryPoints: ['src/session/entry.ts'],
+    entryPoints: ['src/session/entry.tsx'],
     outfile: 'dist/session/entry.js'
   },
   {
     ...shared,
-    entryPoints: ['src/options/entry.ts'],
+    entryPoints: ['src/options/entry.tsx'],
     outfile: 'dist/options/entry.js'
   }
 ];

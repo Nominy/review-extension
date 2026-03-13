@@ -11,12 +11,15 @@ const REQUIRED_FILES = [
   'src/core/lifecycle.ts',
   'src/parsers/review-action-parser.ts',
   'src/services/page-bridge-service.ts',
-  'src/services/review-dialog-service.ts',
+  'src/services/review-dialog-service.tsx',
   'src/services/review-form-service.ts',
   'src/content/entry.ts',
   'src/content/page-bridge.ts',
-  'src/session/entry.ts',
-  'src/options/entry.ts',
+  'src/session/entry.tsx',
+  'src/options/entry.tsx',
+  'src/ui/review-workspace-store.tsx',
+  'src/ui/review-workspace.tsx',
+  'src/ui/styles.ts',
   'session.html',
   'options.html'
 ];

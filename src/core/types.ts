@@ -163,8 +163,26 @@ export interface ReviewSessionCard {
   matchedTemplateId?: string | null;
   templateTitle?: string | null;
   templateDescription?: string | null;
+  initialMatchedTemplateId?: string | null;
+  initialTemplateTitle?: string | null;
+  initialTemplateDescription?: string | null;
+  matchSource?: 'model' | 'manual' | 'manual_cleared' | 'unmatched';
   opinionText?: string | null;
   rationale?: string | null;
+}
+
+export interface TemplateSearchResult {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  reportTexts: string[];
+  score: number;
+}
+
+export interface TemplateSearchResponse {
+  query: string;
+  results: TemplateSearchResult[];
 }
 
 export interface ReviewSessionComments {

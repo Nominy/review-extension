@@ -5,7 +5,8 @@
   NormalizedReviewAction,
   ReviewSessionCreateResponse,
   ReviewSessionData,
-  ReviewSessionFinalizeResponse
+  ReviewSessionFinalizeResponse,
+  TemplateSearchResponse
 } from './types';
 
 class HttpStatusError extends Error {
@@ -191,6 +192,21 @@ export async function getReviewSession(
   return getJsonWithFallback<ReviewSessionData>(`/api/review/sessions/${encodeURIComponent(args.sessionId)}`, baseCandidates);
 }
 
+export async function searchReviewTemplates(
+  args: SessionRequestBase & {
+    query: string;
+    limit?: number;
+  }
+): Promise<TemplateSearchResponse> {
+  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+  const search = new URLSearchParams();
+  search.set('q', args.query);
+  if (Number.isFinite(args.limit)) {
+    search.set('limit', String(args.limit));
+  }
+  return getJsonWithFallback<TemplateSearchResponse>(`/api/review/templates/search?${search.toString()}`, baseCandidates);
+}
+
 export async function saveReviewSessionComments(
   args: SessionRequestBase & {
     sessionId: string;
@@ -205,6 +221,37 @@ export async function saveReviewSessionComments(
       sessionComment: args.sessionComment,
       cardComments: args.cardComments
     },
+    baseCandidates
+  );
+}
+
+export async function updateReviewSessionCardTemplateMatch(
+  args: SessionRequestBase & {
+    sessionId: string;
+    cardId: string;
+    templateId: string;
+  }
+): Promise<ReviewSessionData> {
+  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+  return postJsonWithFallback<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-match`,
+    {
+      templateId: args.templateId
+    },
+    baseCandidates
+  );
+}
+
+export async function clearReviewSessionCardTemplateMatch(
+  args: SessionRequestBase & {
+    sessionId: string;
+    cardId: string;
+  }
+): Promise<ReviewSessionData> {
+  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
+  return postJsonWithFallback<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-clear`,
+    {},
     baseCandidates
   );
 }

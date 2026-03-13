@@ -5,8 +5,11 @@ import {
   finalizeReviewSession,
   generate,
   generateReviewSessionSuggestions,
+  searchReviewTemplates,
+  clearReviewSessionCardTemplateMatch,
   saveReviewSessionComments,
-  submitTranscriptReviewActionAnalytics
+  submitTranscriptReviewActionAnalytics,
+  updateReviewSessionCardTemplateMatch
 } from './backend-client';
 import { loadState, saveState } from './storage';
 import type {
@@ -15,7 +18,8 @@ import type {
   GeneratedReviewResponse,
   NormalizedReviewAction,
   ReviewKernel,
-  ReviewSessionData
+  ReviewSessionData,
+  TemplateSearchResult
 } from './types';
 import { extractNormalizedFromEntry } from '../parsers/review-action-parser';
 import { createPageBridgeService } from '../services/page-bridge-service';
@@ -79,6 +83,8 @@ export function createReviewKernel(): ReviewKernel {
   let commentRevision = 0;
   let savedCommentRevision = 0;
   let commentSaveChain: Promise<void> = Promise.resolve();
+  const templateSearchTimers = new Map<string, number>();
+  const templateSearchRevisions = new Map<string, number>();
 
   function getBackendBaseCandidates(): string[] {
     return Array.from(
@@ -191,7 +197,7 @@ export function createReviewKernel(): ReviewKernel {
       state.original = normalized;
       state.current = normalized;
       state.lastTranscriptionDiff = null;
-      state.activeSession = null;
+      updateActiveSession(null);
     } else {
       state.reviewActionId = actionId;
       if (!state.original) {
@@ -362,12 +368,12 @@ export function createReviewKernel(): ReviewKernel {
 
         savedCommentRevision = Math.max(savedCommentRevision, targetRevision);
         if (targetRevision === commentRevision) {
-          state.activeSession = result;
+          updateActiveSession(result);
         } else {
-          state.activeSession = {
+          updateActiveSession({
             ...result,
             comments: cloneComments(state.activeSession)
-          };
+          });
         }
       });
 
@@ -380,6 +386,138 @@ export function createReviewKernel(): ReviewKernel {
         }`
       );
     }
+  }
+
+  function resetTemplateSearchState(): void {
+    for (const timer of templateSearchTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    templateSearchTimers.clear();
+    templateSearchRevisions.clear();
+  }
+
+  function clearTemplateSearchController(cardId: string): void {
+    const timer = templateSearchTimers.get(cardId);
+    if (timer) {
+      window.clearTimeout(timer);
+      templateSearchTimers.delete(cardId);
+    }
+    templateSearchRevisions.delete(cardId);
+    dialog.clearTemplateSearchState(cardId);
+  }
+
+  function updateActiveSession(nextSession: ReviewSessionData | null): void {
+    state.activeSession = nextSession;
+    if (!nextSession) {
+      resetTemplateSearchState();
+    }
+  }
+
+  function scheduleTemplateSearch(cardId: string, query: string): void {
+    const sessionId = state.activeSession?.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    const trimmed = query.trim();
+    const nextRevision = (templateSearchRevisions.get(cardId) || 0) + 1;
+    templateSearchRevisions.set(cardId, nextRevision);
+
+    const pendingTimer = templateSearchTimers.get(cardId);
+    if (pendingTimer) {
+      window.clearTimeout(pendingTimer);
+    }
+
+    dialog.setTemplateSearchState(cardId, {
+      query,
+      loading: false,
+      error: '',
+      ...(trimmed ? {} : { results: [] })
+    });
+
+    if (!trimmed) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        dialog.setTemplateSearchState(cardId, {
+          query,
+          loading: true,
+          error: ''
+        });
+        const result = await searchReviewTemplates({
+          backendBaseUrl: state.settings.backendBaseUrl.trim(),
+          backendBaseUrlFallbacks: getBackendBaseCandidates(),
+          query: trimmed,
+          limit: 6
+        });
+
+        if (templateSearchRevisions.get(cardId) !== nextRevision) {
+          return;
+        }
+
+        dialog.setTemplateSearchState(cardId, {
+          query,
+          loading: false,
+          error: '',
+          results: (result.results || []) as TemplateSearchResult[]
+        });
+      } catch (error) {
+        if (templateSearchRevisions.get(cardId) !== nextRevision) {
+          return;
+        }
+        dialog.setTemplateSearchState(cardId, {
+          query,
+          loading: false,
+          error: error instanceof Error ? error.message : String(error),
+          results: []
+        });
+      } finally {
+        templateSearchTimers.delete(cardId);
+      }
+    }, 180);
+
+    templateSearchTimers.set(cardId, timer);
+  }
+
+  async function assignCardTemplateMatch(cardId: string, templateId: string): Promise<void> {
+    const sessionId = state.activeSession?.sessionId;
+    if (!sessionId) {
+      throw new Error('Interactive review session is not ready.');
+    }
+
+    await saveSessionCommentsNow();
+    dialog.setBusy(true, 'Applying manual template match...');
+    const session = await updateReviewSessionCardTemplateMatch({
+      backendBaseUrl: state.settings.backendBaseUrl.trim(),
+      backendBaseUrlFallbacks: getBackendBaseCandidates(),
+      sessionId,
+      cardId,
+      templateId
+    });
+    updateActiveSession(session);
+    clearTemplateSearchController(cardId);
+    dialog.renderSession(session, 'Template match updated for this change.');
+  }
+
+  async function clearCardTemplateMatch(cardId: string): Promise<void> {
+    const sessionId = state.activeSession?.sessionId;
+    if (!sessionId) {
+      throw new Error('Interactive review session is not ready.');
+    }
+
+    await saveSessionCommentsNow();
+    dialog.setBusy(true, 'Removing template match...');
+    const session = await clearReviewSessionCardTemplateMatch({
+      backendBaseUrl: state.settings.backendBaseUrl.trim(),
+      backendBaseUrlFallbacks: getBackendBaseCandidates(),
+      sessionId,
+      cardId
+    });
+    updateActiveSession(session);
+    clearTemplateSearchController(cardId);
+    dialog.renderSession(session, 'Template removed from this change.');
   }
 
   function requireActionId(): string {
@@ -412,7 +550,8 @@ export function createReviewKernel(): ReviewKernel {
       babelDiff: state.lastTranscriptionDiff
     });
 
-    state.activeSession = result;
+    resetTemplateSearchState();
+    updateActiveSession(result);
     commentRevision = 0;
     savedCommentRevision = 0;
     window.clearTimeout(commentSaveTimer);
@@ -486,7 +625,7 @@ export function createReviewKernel(): ReviewKernel {
       backendBaseUrlFallbacks: getBackendBaseCandidates(),
       sessionId
     });
-    state.activeSession = session;
+    updateActiveSession(session);
     dialog.renderSession(session, session.suggestions?.length ? 'Suggestions ready for review.' : 'No suggestions were generated.');
   }
 
@@ -504,7 +643,7 @@ export function createReviewKernel(): ReviewKernel {
       proposalId,
       decision
     });
-    state.activeSession = session;
+    updateActiveSession(session);
     dialog.renderSession(session, decision === 'approved' ? 'Suggestion approved.' : 'Suggestion rejected.');
   }
 
@@ -535,7 +674,7 @@ export function createReviewKernel(): ReviewKernel {
       throw new Error('Interactive review could not find review form fields.');
     }
 
-    state.activeSession = null;
+    updateActiveSession(null);
     dialog.close();
     form.setState('done', `Applied (${applied.applied})`);
     form.pushToast(`Applied feedback to ${applied.applied} categories.`, false);
@@ -624,6 +763,27 @@ export function createReviewKernel(): ReviewKernel {
       },
       onCardCommentChange: (cardId, value) => {
         updateLocalCardComment(cardId, value);
+      },
+      onTemplateSearch: (cardId, query) => {
+        scheduleTemplateSearch(cardId, query);
+      },
+      onTemplateSelect: async (cardId, templateId) => {
+        try {
+          await assignCardTemplateMatch(cardId, templateId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          dialog.setStatus(message, true);
+          form.pushToast(`Template match failed: ${message}`, true);
+        }
+      },
+      onTemplateClear: async (cardId) => {
+        try {
+          await clearCardTemplateMatch(cardId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          dialog.setStatus(message, true);
+          form.pushToast(`Template removal failed: ${message}`, true);
+        }
       },
       onSessionCommentChange: (value) => {
         updateLocalSessionComment(value);
