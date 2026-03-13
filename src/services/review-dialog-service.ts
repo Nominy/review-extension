@@ -1,4 +1,5 @@
 import type {
+  ReviewEvidence,
   ReviewSessionComments,
   ReviewSessionData,
   ReviewSessionSuggestion
@@ -505,6 +506,14 @@ function ensureStyles(): void {
       font-size: 13.5px;
       line-height: 1.4;
     }
+    #${ROOT_ID} .babel-review-row-preview {
+      margin-top: 4px;
+      color: #334155;
+      font-size: 12.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     #${ROOT_ID} .babel-review-row-meta {
       margin-top: 3px;
       font-size: 12px;
@@ -589,6 +598,49 @@ function ensureStyles(): void {
     #${ROOT_ID} .babel-review-evidence .babel-review-block[data-side="diff"] .babel-review-block-title {
       color: #6366f1;
     }
+    #${ROOT_ID} .babel-review-diff {
+      display: grid;
+      gap: 8px;
+    }
+    #${ROOT_ID} .babel-review-diff-line {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: start;
+      border-radius: 10px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    #${ROOT_ID} .babel-review-diff-line[data-op="remove"] {
+      background: #fff1f2;
+      color: #9f1239;
+      border: 1px solid #fecdd3;
+    }
+    #${ROOT_ID} .babel-review-diff-line[data-op="add"] {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    #${ROOT_ID} .babel-review-diff-line[data-op="context"] {
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid #e2e8f0;
+    }
+    #${ROOT_ID} .babel-review-diff-marker {
+      font-weight: 700;
+      line-height: 1.55;
+    }
+    #${ROOT_ID} .babel-review-diff-inline {
+      margin-top: 8px;
+      border-top: 1px dashed rgba(99, 102, 241, 0.18);
+      padding-top: 8px;
+    }
+
 
     /* ── Textareas ───────────────────────────────────────── */
     #${ROOT_ID} .babel-review-row textarea,
@@ -827,6 +879,11 @@ function ensureRoot(): HTMLDivElement {
 }
 
 function deriveSummary(card: ReviewSessionData['cards'][number]): string {
+  const diffPreview = deriveEvidencePreview(deriveCardEvidence(card));
+  if (diffPreview) {
+    return diffPreview;
+  }
+
   if (card.summary && card.summary.trim()) {
     return card.summary.trim();
   }
@@ -860,6 +917,85 @@ function deriveEvidence(card: ReviewSessionData['cards'][number]): string | null
   }
 
   return null;
+}
+
+function deriveCardEvidence(card: ReviewSessionData['cards'][number]): ReviewEvidence | null {
+  if (card.evidenceDetail) {
+    return card.evidenceDetail;
+  }
+
+  const fallback = deriveEvidence(card);
+  return fallback
+    ? {
+        kind: 'raw',
+        text: fallback
+      }
+    : null;
+}
+
+function deriveEvidencePreview(evidence: ReviewEvidence | null | undefined): string | null {
+  if (!evidence) {
+    return null;
+  }
+
+  if (evidence.kind === 'text-diff') {
+    const before = String(evidence.before || '').trim();
+    const after = String(evidence.after || '').trim();
+    if (!before && after) {
+      return `+ ${after}`;
+    }
+    if (before && !after) {
+      return `- ${before}`;
+    }
+    if (before || after) {
+      return `${before || '(empty)'} -> ${after || '(empty)'}`;
+    }
+  }
+
+  if (evidence.kind === 'raw') {
+    return String(evidence.text || '').trim() || null;
+  }
+
+  return null;
+}
+
+function renderDiffLine(op: 'remove' | 'add' | 'context', text: string): string {
+  const marker = op === 'remove' ? '-' : op === 'add' ? '+' : '~';
+  return `<div class="babel-review-diff-line" data-op="${op}"><span class="babel-review-diff-marker">${marker}</span><span>${escapeHtml(
+    text || '(empty)'
+  )}</span></div>`;
+}
+
+function renderEvidenceBlock(card: ReviewSessionData['cards'][number]): string {
+  const evidence = deriveCardEvidence(card);
+  const fallback = deriveEvidence(card);
+  if (!evidence && !fallback) {
+    return '';
+  }
+
+  if (evidence?.kind === 'text-diff') {
+    return [
+      '<div class="babel-review-evidence">',
+      '<div class="babel-review-block" data-side="diff">',
+      '<div class="babel-review-block-title">Evidence (what the LLM saw)</div>',
+      '<div class="babel-review-diff">',
+      renderDiffLine('remove', evidence.before || ''),
+      renderDiffLine('add', evidence.after || ''),
+      '</div>',
+      '</div>',
+      '</div>'
+    ].join('');
+  }
+
+  const rawText = evidence?.kind === 'raw' ? evidence.text : fallback || '';
+  return [
+    '<div class="babel-review-evidence">',
+    '<div class="babel-review-block" data-side="diff">',
+    '<div class="babel-review-block-title">Evidence (what the LLM saw)</div>',
+    `<div class="babel-review-block-text">${escapeHtml(rawText)}</div>`,
+    '</div>',
+    '</div>'
+  ].join('');
 }
 
 function renderSuggestionList(suggestions: ReviewSessionSuggestion[], busy: boolean): string {
@@ -929,10 +1065,8 @@ function buildMarkup(state: DialogState): string {
     ? reviewRows
         .map((card) => {
           const cardId = String(card.id || card.changeIndex);
-          const evidence = deriveEvidence(card);
           const isMatched = !!card.matchedTemplateId;
           const isOpen = state.expandedRows.has(cardId);
-          const evidenceOpen = state.evidenceRows.has(cardId);
 
           return [
             `<details class="babel-review-row" data-card-row="${escapeHtml(cardId)}" ${isOpen ? 'open' : ''}>`,
@@ -944,6 +1078,9 @@ function buildMarkup(state: DialogState): string {
             `<div class="babel-review-row-title">Change ${escapeHtml(card.changeIndex)}: ${escapeHtml(
               deriveSummary(card)
             )}</div>`,
+            card.summary && deriveSummary(card) !== card.summary
+              ? `<div class="babel-review-row-preview">${escapeHtml(card.summary)}</div>`
+              : '',
             `<div class="babel-review-row-meta">${escapeHtml(
               card.templateTitle || (isMatched ? 'System opinion available' : 'No system issue selected')
             )}</div>`,
@@ -960,22 +1097,7 @@ function buildMarkup(state: DialogState): string {
               ? `<div class="babel-review-row-meta" style="margin-top:8px;">${escapeHtml(card.rationale)}</div>`
               : '',
             '</div>',
-            evidence
-              ? [
-                  '<div class="babel-review-inline-actions">',
-                  `<button class="secondary-action" data-action="toggle-evidence" data-card-id="${escapeHtml(cardId)}">${
-                    evidenceOpen ? 'Hide evidence' : 'Show evidence'
-                  }</button>`,
-                  '</div>',
-                  `<div class="babel-review-evidence" data-evidence-id="${escapeHtml(cardId)}" ${
-                    evidenceOpen ? '' : 'hidden'
-                  }>`,
-                  `<div class="babel-review-block" data-side="diff"><div class="babel-review-block-title">Evidence (what the LLM saw)</div><div class="babel-review-block-text">${escapeHtml(
-                    evidence
-                  )}</div></div>`,
-                  '</div>'
-                ].join('')
-              : '',
+            renderEvidenceBlock(card),
             '<div class="babel-review-block">',
             '<div class="babel-review-block-title">Reviewer comment</div>',
             `<textarea data-card-id="${escapeHtml(cardId)}" placeholder="Tell the system what should be improved for this change\u2026" ${
@@ -1048,7 +1170,9 @@ function buildMarkup(state: DialogState): string {
     `<span class="babel-review-dialog-title">${escapeHtml(state.title)}</span>`,
     '</div>',
     session?.sessionId
-      ? `<div class="babel-review-dialog-subtitle">Session ${escapeHtml(session.sessionId)}</div>`
+      ? `<div class="babel-review-dialog-subtitle">Session ${escapeHtml(session.sessionId)}${
+          session?.backendVersion?.release ? ` · ${escapeHtml(session.backendVersion.release)}` : ''
+        }</div>`
       : '',
     '</div>',
     '<div class="babel-review-dialog-actions">',
@@ -1079,7 +1203,7 @@ export function createReviewDialogService() {
     tab: 'review',
     session: null,
     expandedRows: new Set<string>(),
-    evidenceRows: new Set<string>()
+      evidenceRows: new Set<string>()
   };
 
   let handlers: DialogHandlers | null = null;

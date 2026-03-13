@@ -1,18 +1,30 @@
-import { MAGIC_BUTTON_ID, MAGIC_STYLE_ID, RATING_PREFIX_BY_CATEGORY } from '../core/constants';
-import type { FeedbackItem, InputSnapshot, MagicButtonController } from '../core/types';
+import {
+  MAGIC_BUTTON_ID,
+  MAGIC_STYLE_ID,
+  RATING_PREFIX_BY_CATEGORY,
+} from "../core/constants";
+import type {
+  FeedbackItem,
+  InputSnapshot,
+  MagicButtonController,
+} from "../core/types";
 
 let toastTimer = 0;
-const TOAST_ID = 'babel-review-magic-toast';
+const TOAST_ID = "babel-review-magic-toast";
 
 function getReviewContainer(): HTMLElement | null {
-  const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Provide specific feedback..."]');
+  const textarea = document.querySelector<HTMLTextAreaElement>(
+    'textarea[placeholder="Provide specific feedback..."]',
+  );
   if (!textarea) {
     return null;
   }
 
   let current: HTMLElement | null = textarea.parentElement;
   while (current && current !== document.body) {
-    const count = current.querySelectorAll('textarea[placeholder="Provide specific feedback..."]').length;
+    const count = current.querySelectorAll(
+      'textarea[placeholder="Provide specific feedback..."]',
+    ).length;
     if (count >= 5) {
       return current;
     }
@@ -23,9 +35,11 @@ function getReviewContainer(): HTMLElement | null {
 }
 
 function findHeading(container: HTMLElement, text: string): HTMLElement | null {
-  const nodes = Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,div,span'));
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,div,span"),
+  );
   for (const node of nodes) {
-    if ((node.textContent || '').trim() === text) {
+    if ((node.textContent || "").trim() === text) {
       return node;
     }
   }
@@ -37,7 +51,7 @@ function ensureStyles(): void {
     return;
   }
 
-  const style = document.createElement('style');
+  const style = document.createElement("style");
   style.id = MAGIC_STYLE_ID;
   style.textContent = `
     #${MAGIC_BUTTON_ID} {
@@ -55,6 +69,7 @@ function ensureStyles(): void {
       overflow: hidden;
       transition: all 180ms ease;
       box-shadow: 0 1px 3px rgba(99, 102, 241, 0.10), 0 1px 2px rgba(99, 102, 241, 0.06);
+      margin: 10px;
     }
     #${MAGIC_BUTTON_ID}::before {
       content: '';
@@ -167,7 +182,10 @@ function ensureStyles(): void {
 }
 
 function setNativeValue(element: HTMLTextAreaElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
   if (setter) {
     setter.call(element, value);
   } else {
@@ -175,21 +193,27 @@ function setNativeValue(element: HTMLTextAreaElement, value: string): void {
   }
 }
 
-function findCardByCategory(root: ParentNode, category: string): HTMLElement | null {
+function findCardByCategory(
+  root: ParentNode,
+  category: string,
+): HTMLElement | null {
   const prefix = RATING_PREFIX_BY_CATEGORY[category];
   if (!prefix) {
     return null;
   }
 
   const selector = `#${CSS.escape(prefix)}-1`;
-  const control = root.querySelector(selector) || document.querySelector(selector);
+  const control =
+    root.querySelector(selector) || document.querySelector(selector);
   if (!(control instanceof HTMLElement)) {
     return null;
   }
 
-  let card: HTMLElement | null = control.closest('div');
+  let card: HTMLElement | null = control.closest("div");
   while (card && card !== root && card !== document.body) {
-    if (card.querySelector('textarea[placeholder="Provide specific feedback..."]')) {
+    if (
+      card.querySelector('textarea[placeholder="Provide specific feedback..."]')
+    ) {
       return card;
     }
     card = card.parentElement;
@@ -212,29 +236,29 @@ export function createReviewFormService(): MagicButtonController {
         return;
       }
 
-      const button = document.createElement('button');
+      const button = document.createElement("button");
       button.id = MAGIC_BUTTON_ID;
-      button.type = 'button';
-      button.dataset.state = 'idle';
+      button.type = "button";
+      button.dataset.state = "idle";
       button.innerHTML = `
         <span class="babel-review-magic-icon">\u{1FA84}</span>
         <span class="babel-review-magic-spinner"></span>
         <span class="babel-review-magic-label">Magic Review</span>
       `;
-      button.addEventListener('click', () => {
+      button.addEventListener("click", () => {
         void onClick();
       });
 
-      const heading = findHeading(container, 'Review the feedback');
+      const heading = findHeading(container, "Review the feedback");
       if (heading?.parentElement) {
         heading.parentElement.appendChild(button);
         return;
       }
 
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.justifyContent = 'flex-end';
-      wrapper.style.marginBottom = '8px';
+      const wrapper = document.createElement("div");
+      wrapper.style.display = "flex";
+      wrapper.style.justifyContent = "flex-end";
+      wrapper.style.marginBottom = "8px";
       wrapper.appendChild(button);
       container.prepend(wrapper);
     },
@@ -245,10 +269,12 @@ export function createReviewFormService(): MagicButtonController {
       }
 
       button.dataset.state = mode;
-      button.disabled = mode === 'loading';
-      const labelNode = button.querySelector<HTMLElement>('.babel-review-magic-label');
+      button.disabled = mode === "loading";
+      const labelNode = button.querySelector<HTMLElement>(
+        ".babel-review-magic-label",
+      );
       if (labelNode) {
-        labelNode.textContent = label || 'Magic Review';
+        labelNode.textContent = label || "Magic Review";
       }
     },
     pushToast(message, isError): void {
@@ -259,31 +285,33 @@ export function createReviewFormService(): MagicButtonController {
       }
       window.clearTimeout(toastTimer);
 
-      const holder = document.createElement('div');
+      const holder = document.createElement("div");
       holder.id = TOAST_ID;
       holder.style.background = isError
-        ? 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)'
-        : 'linear-gradient(135deg, #166534 0%, #15803d 100%)';
+        ? "linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)"
+        : "linear-gradient(135deg, #166534 0%, #15803d 100%)";
       holder.innerHTML = `<div class="babel-toast-content"></div><div class="babel-toast-bar"></div>`;
-      const content = holder.querySelector<HTMLElement>('.babel-toast-content');
+      const content = holder.querySelector<HTMLElement>(".babel-toast-content");
       if (content) {
         content.textContent = message;
       }
       document.documentElement.appendChild(holder);
 
       toastTimer = window.setTimeout(() => {
-        holder.classList.add('babel-toast-out');
+        holder.classList.add("babel-toast-out");
         window.setTimeout(() => holder.remove(), 240);
       }, 3000);
     },
-    async applyFeedback(feedback: FeedbackItem[]): Promise<{ applied: number }> {
+    async applyFeedback(
+      feedback: FeedbackItem[],
+    ): Promise<{ applied: number }> {
       const root = getReviewContainer() || document;
       let applied = 0;
       const targets: Array<{ note: string; card: HTMLElement }> = [];
 
       for (const item of feedback) {
         const category = item?.category?.trim();
-        const note = item?.note || '';
+        const note = item?.note || "";
         if (!category || !note) {
           continue;
         }
@@ -296,15 +324,15 @@ export function createReviewFormService(): MagicButtonController {
 
       for (const target of targets) {
         const textarea = target.card.querySelector<HTMLTextAreaElement>(
-          'textarea[placeholder="Provide specific feedback..."]'
+          'textarea[placeholder="Provide specific feedback..."]',
         );
         if (!textarea) {
           continue;
         }
 
         setNativeValue(textarea, target.note);
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        textarea.dispatchEvent(new Event("change", { bubbles: true }));
         applied += 1;
       }
 
@@ -312,7 +340,7 @@ export function createReviewFormService(): MagicButtonController {
     },
     collectInputBoxesSnapshot(): InputSnapshot {
       const root = getReviewContainer() || document;
-      const categories: InputSnapshot['categories'] = {};
+      const categories: InputSnapshot["categories"] = {};
 
       for (const category of Object.keys(RATING_PREFIX_BY_CATEGORY)) {
         const card = findCardByCategory(root, category);
@@ -320,20 +348,24 @@ export function createReviewFormService(): MagicButtonController {
           continue;
         }
 
-        const textarea = card.querySelector<HTMLTextAreaElement>('textarea[placeholder="Provide specific feedback..."]');
+        const textarea = card.querySelector<HTMLTextAreaElement>(
+          'textarea[placeholder="Provide specific feedback..."]',
+        );
         categories[category] = {
-          note: textarea?.value || ''
+          note: textarea?.value || "",
         };
       }
 
       const notes = Array.from(
-        root.querySelectorAll<HTMLTextAreaElement>('textarea[placeholder="Provide specific feedback..."]')
+        root.querySelectorAll<HTMLTextAreaElement>(
+          'textarea[placeholder="Provide specific feedback..."]',
+        ),
       ).map((element, index) => ({
         index,
-        note: element.value || ''
+        note: element.value || "",
       }));
 
       return { categories, notes };
-    }
+    },
   };
 }

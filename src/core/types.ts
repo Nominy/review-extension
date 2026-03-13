@@ -101,6 +101,25 @@ export interface FeedbackItem {
   score?: number;
 }
 
+export type ReviewEvidence =
+  | {
+      kind: 'text-diff';
+      before: string;
+      after: string;
+      inlineDiff?: string;
+    }
+  | {
+      kind: 'raw';
+      text: string;
+    };
+
+export interface BackendVersionInfo {
+  service: string;
+  release: string;
+  apiSchema: number;
+  evidenceSchema: number;
+}
+
 export interface GeneratedReviewResponse {
   llm?: {
     feedback?: FeedbackItem[];
@@ -139,6 +158,7 @@ export interface ReviewSessionCard {
   summary?: string;
   /** Compact evidence: the exact diff/summary the LLM classified */
   evidence?: string | null;
+  evidenceDetail?: ReviewEvidence | null;
   categories: string[];
   matchedTemplateId?: string | null;
   templateTitle?: string | null;
@@ -168,6 +188,7 @@ export interface ReviewSessionSuggestion {
 export interface ReviewSessionData {
   sessionId: string;
   reviewActionId: string;
+  backendVersion?: BackendVersionInfo | null;
   prepared?: Record<string, unknown> | null;
   cards: ReviewSessionCard[];
   categoryFeedback: FeedbackItem[];
@@ -182,6 +203,7 @@ export interface ReviewSessionCreateResponse extends ReviewSessionData {}
 export interface ReviewSessionFinalizeResponse {
   sessionId: string;
   reviewActionId: string;
+  backendVersion?: BackendVersionInfo | null;
   categoryFeedback: FeedbackItem[];
   aiReview?: GeneratedReviewResponse['llm'] | null;
   [key: string]: unknown;
