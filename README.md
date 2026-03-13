@@ -1,75 +1,75 @@
-# Review Interceptor Extension (Client + Server)
+﻿# Review Interceptor Extension
 
-Chrome extension that intercepts review APIs, stores baseline state locally, and injects a single in-panel `Magic Review` button that calls backend (Bun + Elysia) for generation.
+MV3 extension that intercepts Babel review traffic, talks to the Bun backend, and now supports both a fast auto-apply route and an interactive review-session route.
 
-## What It Does
+## Build
 
-- Intercepts page-level `fetch` and `XMLHttpRequest`.
-- Filters URLs containing `claimNextReviewActionFromReviewQueue`, `getReviewActionDataById`, and `submitTranscriptReviewAction`.
-- When claim-next is captured, extracts ID strictly from `actionId` / `reviewActionId` fields and auto-calls `getReviewActionDataById`.
-- Caches first `getReviewActionDataById` as authoritative `ORIGINAL`, and latest as `NEW`.
-- Injects one `Magic Review` button into Babel's review panel.
-- On click: refreshes latest reviewAction data, calls backend `/api/review/generate`, auto-fills notes.
-- On transcript submit (`submitTranscriptReviewAction`): captures current review form inputs and sends analytics snapshot to backend `/api/trpc/transcriptions.submitTranscriptReviewAction`.
-- Keeps captured baseline/current in `chrome.storage.local` so `ORIGINAL` is preserved.
+1. Install dependencies:
+   - `npm install`
+2. Build extension bundles:
+   - `npm run build`
+3. Load unpacked extension from `review-interceptor-extension/` in `chrome://extensions`.
 
-## Cookies / Auth
+Bundled outputs:
+- `dist/content/entry.js`
+- `dist/content/page-bridge.js`
+- `dist/session/entry.js`
+- `dist/options/entry.js`
 
-- No `cookies.txt` is used by the extension.
-- All calls run in page context on `dashboard.babel.audio` and use your active browser session cookies automatically.
-- The follow-up call to `getReviewActionDataById` is sent with `credentials: "include"`.
+## Architecture
 
-## Load In Chrome
+Source lives under `src/`:
+- `core/` constants, types, backend client, storage, kernel, lifecycle
+- `parsers/` TRPC stream parsing and review action normalization
+- `services/` page bridge injection plus review form/UI helpers
+- `content/` Babel page entrypoints (`entry.ts`, `page-bridge.ts`)
+- `session/` dedicated interactive review session window
+- `options/` extension settings page
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select folder: `review-interceptor-extension`.
-5. Open `https://dashboard.babel.audio`.
+Static extension pages:
+- `session.html` interactive review workflow window
+- `options.html` extension settings
 
-## Build CRX
+## Behavior
 
-```bash
-cd review-interceptor-extension
-npm run build:crx
-```
+Runtime behavior now supports two workflows:
+- `interactive` (default): `Magic Review` creates a backend session and opens the interactive extension window.
+- `fast`: `Magic Review` calls `/api/review/generate` and immediately applies the feedback into the Babel form.
 
-Outputs:
-- `dist/review-interceptor-extension.crx`
-- `keys/review-interceptor-extension.pem` (created on first build, then reused)
+Interactive route:
+- refreshes CURRENT state and transcription diff
+- creates backend review session data
+- opens `session.html`
+- autosaves per-change comments and session-level comment
+- requests template-improvement suggestions
+- lets the user approve/reject template proposals
+- sends an apply command back to the content script through `chrome.storage.local`
 
-Notes:
-- Uses local Chrome/Chromium `--pack-extension`.
-- If auto-detection fails, set `CHROME_PATH` to browser executable.
+Fast route:
+- keeps the original auto-fill behavior compatible with `/api/review/generate`
 
-## Run Backend (Bun)
+The extension settings page (`chrome-extension://.../options.html`) controls:
+- default workflow mode
+- backend base URL
+- fallback backend URLs
+- refresh timeout
 
-1. `cd review-backend`
-2. `bun install`
-3. `bun run dev`
-4. Default backend URL is `https://reviewgen.ovh`.
-5. Automatic fallback URLs: `http://127.0.0.1:3001`, `http://localhost:3001`.
+## Backend expectations
 
-## Domain Setup
+Interactive route expects these endpoints in addition to the original generate flow:
+- `POST /api/review/sessions`
+- `GET /api/review/sessions/:id`
+- `POST /api/review/sessions/:id/comments`
+- `POST /api/review/sessions/:id/template-suggestions`
+- `POST /api/review/sessions/:id/template-suggestions/:proposalId/decision`
+- `POST /api/review/sessions/:id/finalize`
 
-- Extension host permissions already include:
-  - `https://reviewgen.ovh/*`
-  - `http://127.0.0.1/*`
-  - `http://localhost/*`
-- So after server deployment, no extension code changes are required.
+Fast route still uses:
+- `POST /api/review/generate`
+- `POST /api/trpc/transcriptions.submitTranscriptReviewAction`
 
-## Use
+## Validation
 
-- Enter review mode to trigger claim-next and auto fetch action data.
-- Open the Babel review feedback panel.
-- Click `Magic Review`.
-- Wait for spinner; notes are auto-applied into category fields.
-
-## Module Layout
-
-- `constants.js`: shared constants.
-- `storage.js`: local persistence helpers.
-- `parser.js`: TRPC parsing and payload normalization.
-- `backend-client.js`: calls backend `/prepare` and `/generate`.
-- `content.js`: wand button injection, baseline caching, backend call, auto-fill.
-- `injected.js`: network interception + page-context follow-up fetch.
+- `npm run typecheck`
+- `npm run build`
+- `npm run test`

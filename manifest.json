@@ -1,8 +1,8 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "Babel Review Action Interceptor (Dev)",
-  "version": "0.2.0",
-  "description": "Review assistant: intercepts review APIs and uses Bun backend (local or remote) for metrics/prompts/LLM feedback.",
+  "version": "0.3.0",
+  "description": "Review assistant: intercepts review APIs and uses Bun backend (local or remote) for metrics, prompts, interactive sessions, and LLM feedback.",
   "permissions": [
     "storage"
   ],
@@ -12,25 +12,25 @@
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
+  "options_page": "options.html",
   "content_scripts": [
     {
       "matches": [
         "https://dashboard.babel.audio/*"
       ],
       "js": [
-        "constants.js",
-        "storage.js",
-        "parser.js",
-        "backend-client.js",
-        "content.js"
+        "dist/content/entry.js"
       ],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
-        "injected.js"
+        "dist/content/page-bridge.js",
+        "session.html",
+        "dist/session/entry.js",
+        "dist/session/entry.js.map"
       ],
       "matches": [
         "https://dashboard.babel.audio/*"

@@ -15,3 +15,5 @@ Thumbs.db
 # Packaged extension artifacts
 *.zip
 keys/*.pem
+
+/node_modules
