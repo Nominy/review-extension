@@ -11,6 +11,7 @@ import type {
 
 let toastTimer = 0;
 const TOAST_ID = "babel-review-magic-toast";
+const MIN_REVIEW_TEXTAREAS = 4;
 
 function getReviewContainer(): HTMLElement | null {
   const textarea = document.querySelector<HTMLTextAreaElement>(
@@ -25,7 +26,7 @@ function getReviewContainer(): HTMLElement | null {
     const count = current.querySelectorAll(
       'textarea[placeholder="Provide specific feedback..."]',
     ).length;
-    if (count >= 5) {
+    if (count >= MIN_REVIEW_TEXTAREAS) {
       return current;
     }
     current = current.parentElement;
@@ -59,65 +60,47 @@ function ensureStyles(): void {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 50%, #ede9fe 100%);
-      color: #312e81;
-      border-radius: 12px;
-      padding: 9px 14px;
+      border: 1px solid #f97316;
+      background: #f97316;
+      color: #ffffff;
+      border-radius: 6px;
+      padding: 7px 12px;
       font: 600 13px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       cursor: pointer;
-      overflow: hidden;
-      transition: all 180ms ease;
-      box-shadow: 0 1px 3px rgba(99, 102, 241, 0.10), 0 1px 2px rgba(99, 102, 241, 0.06);
-      margin: 10px;
-    }
-    #${MAGIC_BUTTON_ID}::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(105deg,
-        transparent 20%,
-        rgba(255, 255, 255, 0.45) 40%,
-        rgba(255, 255, 255, 0.6) 50%,
-        rgba(255, 255, 255, 0.45) 60%,
-        transparent 80%
-      );
-      transform: translateX(-100%);
-      animation: babel-review-shimmer 3.5s ease-in-out infinite;
+      margin-left: 8px;
+      margin-right: 0;
+      margin-top: 4px;
+      margin-bottom: 4px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
     }
     #${MAGIC_BUTTON_ID}:hover {
-      border-color: rgba(99, 102, 241, 0.45);
-      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.18), 0 1px 3px rgba(99, 102, 241, 0.10);
-      transform: translateY(-1px);
+      background: #ea580c;
+      border-color: #ea580c;
     }
     #${MAGIC_BUTTON_ID}:active {
-      transform: translateY(0);
-      box-shadow: 0 1px 2px rgba(99, 102, 241, 0.10);
+      background: #c2410c;
+      border-color: #c2410c;
+      box-shadow: none;
     }
     #${MAGIC_BUTTON_ID}[data-state="loading"] {
       opacity: 0.88;
       cursor: wait;
-      background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+      background: #fdba74;
+      border-color: #fdba74;
     }
-    #${MAGIC_BUTTON_ID}[data-state="loading"]::before { animation: none; }
     #${MAGIC_BUTTON_ID}[data-state="done"] {
-      border-color: rgba(34, 197, 94, 0.35);
-      background: linear-gradient(135deg, #ecfdf5 0%, #dcfce7 100%);
-      color: #14532d;
-      box-shadow: 0 1px 3px rgba(34, 197, 94, 0.12);
+      border-color: #16a34a;
+      background: #16a34a;
+      color: #ffffff;
     }
-    #${MAGIC_BUTTON_ID}[data-state="done"]::before { animation: none; }
     #${MAGIC_BUTTON_ID}[data-state="error"] {
-      border-color: rgba(239, 68, 68, 0.3);
-      background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-      color: #991b1b;
-      box-shadow: 0 1px 3px rgba(239, 68, 68, 0.10);
+      border-color: #b91c1c;
+      background: #b91c1c;
+      color: #ffffff;
     }
-    #${MAGIC_BUTTON_ID}[data-state="error"]::before { animation: none; }
     #${MAGIC_BUTTON_ID} .babel-review-magic-icon {
       font-size: 15px;
       line-height: 1;
-      filter: saturate(1.1);
     }
     #${MAGIC_BUTTON_ID} .babel-review-magic-spinner {
       width: 14px;
@@ -134,10 +117,6 @@ function ensureStyles(): void {
     #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-icon { display: none; }
     @keyframes babel-review-spin {
       to { transform: rotate(360deg); }
-    }
-    @keyframes babel-review-shimmer {
-      0%, 100% { transform: translateX(-100%); }
-      50% { transform: translateX(100%); }
     }
     #${TOAST_ID} {
       position: fixed;

@@ -428,21 +428,18 @@ export function createReviewKernel(): ReviewKernel {
       window.clearTimeout(pendingTimer);
     }
 
-    dialog.setTemplateSearchState(cardId, {
-      query,
-      loading: false,
-      error: '',
-      ...(trimmed ? {} : { results: [] })
-    });
-
     if (!trimmed) {
+      dialog.setTemplateSearchState(cardId, {
+        loading: false,
+        error: '',
+        results: []
+      });
       return;
     }
 
     const timer = window.setTimeout(async () => {
       try {
         dialog.setTemplateSearchState(cardId, {
-          query,
           loading: true,
           error: ''
         });
@@ -458,7 +455,6 @@ export function createReviewKernel(): ReviewKernel {
         }
 
         dialog.setTemplateSearchState(cardId, {
-          query,
           loading: false,
           error: '',
           results: (result.results || []) as TemplateSearchResult[]
@@ -468,7 +464,6 @@ export function createReviewKernel(): ReviewKernel {
           return;
         }
         dialog.setTemplateSearchState(cardId, {
-          query,
           loading: false,
           error: error instanceof Error ? error.message : String(error),
           results: []
@@ -476,7 +471,7 @@ export function createReviewKernel(): ReviewKernel {
       } finally {
         templateSearchTimers.delete(cardId);
       }
-    }, 180);
+    }, 280);
 
     templateSearchTimers.set(cardId, timer);
   }

@@ -29,3 +29,10 @@ test('refactor structure files exist', () => {
     assert.equal(fs.existsSync(new URL('../' + relPath, import.meta.url)), true, `${relPath} should exist`);
   }
 });
+
+test('review form service supports 4-category review forms', () => {
+  const source = fs.readFileSync(new URL('../src/services/review-form-service.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /const MIN_REVIEW_TEXTAREAS = 4;/);
+  assert.match(source, /count >= MIN_REVIEW_TEXTAREAS/);
+});

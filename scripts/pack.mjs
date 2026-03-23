@@ -31,7 +31,11 @@ function collectFiles(dir, base) {
   return results;
 }
 
-const files = [{ full: join(ROOT, 'manifest.json'), rel: 'manifest.json' }];
+const files = [
+  { full: join(ROOT, 'manifest.json'), rel: 'manifest.json' },
+  { full: join(ROOT, 'options.html'), rel: 'options.html' },
+  { full: join(ROOT, 'session.html'), rel: 'session.html' }
+];
 for (const { full, rel } of collectFiles(join(ROOT, 'dist'), 'dist')) {
   if (full.endsWith('.js')) {
     files.push({ full, rel });

@@ -1,6 +1,6 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import type { ReviewEvidence, ReviewSessionData, ReviewSessionSuggestion } from '../core/types';
-import type { DialogTab, ReviewWorkspaceStore, TemplateSearchState } from './review-workspace-store';
+import type { ReviewWorkspaceStore, TemplateSearchState } from './review-workspace-store';
 import {
   DEFAULT_TEMPLATE_SEARCH_STATE,
   ReviewWorkspaceStoreProvider,
@@ -100,14 +100,39 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
   cardId: string;
   busy: boolean;
   searchState: TemplateSearchState;
+  open: boolean;
+  onToggleOpen: () => void;
   onQueryChange: (value: string) => void;
   onSelect: (templateId: string) => void;
   onClear: () => void;
 }) {
+  const [localQuery, setLocalQuery] = useState(props.searchState.query);
+
+  useEffect(() => {
+    if (!props.open) {
+      setLocalQuery('');
+    }
+  }, [props.open]);
+
   const previousTemplate =
     props.card.initialMatchedTemplateId && props.card.initialMatchedTemplateId !== props.card.matchedTemplateId
       ? props.card.initialTemplateTitle || props.card.initialMatchedTemplateId
       : '';
+
+  if (!props.open) {
+    return (
+      <div className="br-inline-actions">
+        <button
+          className="br-button"
+          disabled={props.busy}
+          onClick={props.onToggleOpen}
+          type="button"
+        >
+          {props.card.matchedTemplateId ? 'Change template' : 'Match template'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="br-block">
@@ -129,16 +154,29 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
           >
             Remove template
           </button>
+          <button
+            className="br-button"
+            data-variant="ghost"
+            disabled={props.busy}
+            onClick={props.onToggleOpen}
+            type="button"
+          >
+            Close search
+          </button>
         </div>
         <label className="br-label" htmlFor={`template-search-${props.cardId}`}>Search templates</label>
         <input
           id={`template-search-${props.cardId}`}
           className="br-input"
           disabled={props.busy}
-          onChange={(event) => props.onQueryChange(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value;
+            setLocalQuery(value);
+            props.onQueryChange(value);
+          }}
           placeholder="Title, description, id, category, or template text"
           type="text"
-          value={props.searchState.query}
+          value={localQuery}
         />
         {props.searchState.loading ? <div className="br-helper">Searching templates...</div> : null}
         {!props.searchState.loading && props.searchState.error ? (
@@ -192,8 +230,10 @@ const ReviewCard = memo(function ReviewCard(props: {
   const searchState = useReviewWorkspaceSelector(
     (state) => state.templateSearch[cardId] || DEFAULT_TEMPLATE_SEARCH_STATE
   );
+  const searchOpen = useReviewWorkspaceSelector((state) => !!state.templateSearchOpen[cardId]);
   const setExpandedRow = useReviewWorkspaceSelector((state) => state.setExpandedRow);
   const setCardCommentDraft = useReviewWorkspaceSelector((state) => state.setCardCommentDraft);
+  const setTemplateSearchOpen = useReviewWorkspaceSelector((state) => state.setTemplateSearchOpen);
 
   return (
     <div className="br-card">
@@ -203,21 +243,22 @@ const ReviewCard = memo(function ReviewCard(props: {
       >
         <summary>
           <div className="br-row-top">
-            <span className="br-badge" data-variant={props.card.matchedTemplateId ? 'success' : 'muted'}>
-              {props.card.matchedTemplateId ? 'Matched' : 'Unmatched'}
-            </span>
+            <span className="br-pill-dot" data-variant={props.card.matchedTemplateId ? 'matched' : 'unmatched'} />
+            <div>
+              <div className="br-row-title">
+                Change {props.card.changeIndex}: {deriveSummary(props.card)}
+              </div>
+              <div className="br-meta">
+                {props.card.templateTitle || 'No template selected'}
+              </div>
+            </div>
             <span className="br-badge" data-variant="warning">{props.card.type || 'UNKNOWN'}</span>
           </div>
-          <div className="br-row-title" style={{ marginTop: 10 }}>
-            Change {props.card.changeIndex}: {deriveSummary(props.card)}
-          </div>
-          <div className="br-meta" style={{ marginTop: 6 }}>
-            {props.card.templateTitle || 'No system issue selected'} · {describeMatchSource(props.card)}
-          </div>
         </summary>
-        <div className="br-stack" style={{ marginTop: 14 }}>
-          <div className="br-block">
+        <div className="br-stack" style={{ marginTop: 10 }}>
+          <div>
             <div className="br-label">System opinion</div>
+            <div className="br-meta">{describeMatchSource(props.card)}</div>
             <div>{props.card.opinionText || 'No system issue selected for this change.'}</div>
             {props.card.rationale ? <div className="br-meta">{props.card.rationale}</div> : null}
           </div>
@@ -226,6 +267,8 @@ const ReviewCard = memo(function ReviewCard(props: {
             busy={props.busy}
             card={props.card}
             cardId={cardId}
+            open={searchOpen}
+            onToggleOpen={() => setTemplateSearchOpen(cardId, !searchOpen)}
             onClear={() => props.onTemplateClear(cardId)}
             onQueryChange={(value) => props.onTemplateSearchChange(cardId, value)}
             onSelect={(templateId) => props.onTemplateSelect(cardId, templateId)}
@@ -315,10 +358,10 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
   const error = useReviewWorkspaceSelector((state) => state.error);
   const title = useReviewWorkspaceSelector((state) => state.title);
   const status = useReviewWorkspaceSelector((state) => state.status);
-  const tab = useReviewWorkspaceSelector((state) => state.tab);
   const session = useReviewWorkspaceSelector((state) => state.session);
   const sessionCommentDraft = useReviewWorkspaceSelector((state) => state.sessionCommentDraft);
-  const setTab = useReviewWorkspaceSelector((state) => state.setTab);
+  const suggestionsExpanded = useReviewWorkspaceSelector((state) => state.suggestionsExpanded);
+  const toggleSuggestionsExpanded = useReviewWorkspaceSelector((state) => state.toggleSuggestionsExpanded);
   const setSessionCommentDraft = useReviewWorkspaceSelector((state) => state.setSessionCommentDraft);
 
   const matchedCount = useMemo(
@@ -329,110 +372,145 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
   const content = (
     <div className={props.variant === 'page' ? 'br-page' : ''}>
       <div className="br-page-shell">
-        <div className="br-hero">
-          <div className="br-hero-top" style={{ justifyContent: 'space-between' }}>
+        <div className="br-shell-surface">
+          <div className="br-header">
             <div>
-              <div className="br-hero-title">{title}</div>
-              <div className="br-subtitle">
-                {session?.sessionId ? `Session ${session.sessionId}` : 'Interactive review workspace'}
+              <div className="br-header-title">{title}</div>
+              <div className="br-header-status" data-error={error}>
+                {status}
               </div>
             </div>
-            <div className={props.variant === 'overlay' ? 'br-overlay-actions' : 'br-toolbar'}>
-              <button className="br-button" data-variant="ghost" disabled={busy || !session} onClick={() => props.onRefresh()} type="button">Refresh</button>
-              <button className="br-button" data-variant="ghost" disabled={busy || !session} onClick={() => props.onGenerateSuggestions()} type="button">Generate suggestions</button>
-              <button className="br-button" data-variant="ghost" disabled={busy || !session} onClick={() => props.onFinalize('skip')} type="button">Apply immediately</button>
-              <button className="br-button" data-variant="primary" disabled={busy || !session} onClick={() => props.onFinalize('apply')} type="button">Apply final review</button>
+            <div className="br-toolbar">
+              <button
+                className="br-button"
+                disabled={busy || !session}
+                onClick={() => props.onRefresh()}
+                type="button"
+              >
+                Refresh
+              </button>
+              <button
+                className="br-button"
+                disabled={busy || !session}
+                onClick={() => props.onGenerateSuggestions()}
+                type="button"
+              >
+                Generate suggestions
+              </button>
+              <button
+                className="br-button"
+                disabled={busy || !session}
+                onClick={() => props.onFinalize('skip')}
+                type="button"
+              >
+                Apply without review
+              </button>
+              <button
+                className="br-button"
+                data-variant="primary"
+                disabled={busy || !session}
+                onClick={() => props.onFinalize('apply')}
+                type="button"
+              >
+                Apply
+              </button>
               {props.onClose ? (
-                <button className="br-button" data-variant="danger" disabled={busy} onClick={props.onClose} type="button">
-                  {props.closeLabel || 'Close'}
+                <button
+                  aria-label={props.closeLabel || 'Close'}
+                  className="br-button"
+                  data-variant="ghost"
+                  disabled={busy}
+                  onClick={props.onClose}
+                  type="button"
+                >
+                  ×
                 </button>
               ) : null}
             </div>
           </div>
-          <div className="br-status" data-error={error}>
-            {status}
+
+          <div className="br-main">
+            {loading && !session ? (
+              <div className="br-empty">Preparing review session…</div>
+            ) : null}
+
+            {session ? (
+              <>
+                <div className="br-summary-bar">
+                  <div className="br-summary-pill">
+                    <span className="br-summary-dot" />
+                    <span>{session.cards.length} changes</span>
+                  </div>
+                  <span>·</span>
+                  <span>{matchedCount} matched</span>
+                  <span>·</span>
+                  <span>{session.suggestions.length} suggestions</span>
+                </div>
+
+                <div className="br-divider" />
+
+                <div className="br-stack">
+                  {session.cards.length ? (
+                    session.cards.map((card) => (
+                      <ReviewCard
+                        busy={busy}
+                        card={card}
+                        key={card.id || card.changeIndex}
+                        onCommentChange={props.onCardCommentChange}
+                        onTemplateClear={props.onTemplateClear}
+                        onTemplateSearchChange={props.onTemplateSearchChange}
+                        onTemplateSelect={props.onTemplateSelect}
+                      />
+                    ))
+                  ) : (
+                    <div className="br-empty">No changes were detected for this review.</div>
+                  )}
+                </div>
+
+                <div className="br-divider" />
+
+                <section>
+                  <div className="br-section-header">
+                    <div className="br-section-title">Improve the system</div>
+                    <button
+                      className="br-button"
+                      data-variant="ghost"
+                      onClick={toggleSuggestionsExpanded}
+                      type="button"
+                    >
+                      {suggestionsExpanded ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {suggestionsExpanded ? (
+                    <div className="br-stack">
+                      <div className="br-block">
+                        <div className="br-label">General reviewer comment</div>
+                        <textarea
+                          className="br-textarea"
+                          disabled={busy}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setSessionCommentDraft(value);
+                            props.onSessionCommentChange(value);
+                          }}
+                          placeholder="Optional note for the entire review session..."
+                          value={sessionCommentDraft}
+                        />
+                      </div>
+                      <SuggestionsList
+                        busy={busy}
+                        onDecision={props.onSuggestionDecision}
+                        suggestions={session.suggestions || []}
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              </>
+            ) : !loading ? (
+              <div className="br-empty">Session is not available.</div>
+            ) : null}
           </div>
         </div>
-
-        {loading && !session ? (
-          <div className="br-panel">
-            <div className="br-empty">Preparing review session…</div>
-          </div>
-        ) : null}
-
-        {session ? (
-          <>
-            <div className="br-panel">
-              <div className="br-panel-top">
-                <div className="br-panel-title">Summary</div>
-              </div>
-              <div className="br-summary-grid">
-                <div className="br-summary-item"><span className="br-summary-value">{session.cards.length}</span><div className="br-meta">Changes</div></div>
-                <div className="br-summary-item"><span className="br-summary-value">{matchedCount}</span><div className="br-meta">Matched</div></div>
-                <div className="br-summary-item"><span className="br-summary-value">{session.suggestions.length}</span><div className="br-meta">Suggestions</div></div>
-              </div>
-            </div>
-
-            <div className="br-panel">
-              <div className="br-tabs">
-                <button className="br-tab" data-active={tab === 'review'} onClick={() => setTab('review')} type="button">Review</button>
-                <button className="br-tab" data-active={tab === 'improve'} onClick={() => setTab('improve')} type="button">Improve</button>
-              </div>
-            </div>
-
-            {tab === 'review' ? (
-              <div className="br-panel">
-                <div className="br-panel-top">
-                  <div className="br-panel-title">Detected changes</div>
-                  <div className="br-helper">{session.cards.length} changes · {matchedCount} matched</div>
-                </div>
-                <div className="br-stack">
-                  {session.cards.length ? session.cards.map((card) => (
-                    <ReviewCard
-                      busy={busy}
-                      card={card}
-                      key={card.id || card.changeIndex}
-                      onCommentChange={props.onCardCommentChange}
-                      onTemplateClear={props.onTemplateClear}
-                      onTemplateSearchChange={props.onTemplateSearchChange}
-                      onTemplateSelect={props.onTemplateSelect}
-                    />
-                  )) : <div className="br-empty">No changes were detected for this review.</div>}
-                </div>
-              </div>
-            ) : (
-              <div className="br-panel">
-                <div className="br-panel-top">
-                  <div>
-                    <div className="br-panel-title">Improve the system</div>
-                    <div className="br-helper">Manual matches and removals are included in the improvement context.</div>
-                  </div>
-                </div>
-                <div className="br-stack">
-                  <div className="br-block">
-                    <div className="br-label">General reviewer comment</div>
-                    <textarea
-                      className="br-textarea"
-                      disabled={busy}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setSessionCommentDraft(value);
-                        props.onSessionCommentChange(value);
-                      }}
-                      placeholder="Optional note for the entire review session..."
-                      value={sessionCommentDraft}
-                    />
-                  </div>
-                  <SuggestionsList busy={busy} onDecision={props.onSuggestionDecision} suggestions={session.suggestions || []} />
-                </div>
-              </div>
-            )}
-          </>
-        ) : !loading ? (
-          <div className="br-panel">
-            <div className="br-empty">Session is not available.</div>
-          </div>
-        ) : null}
       </div>
     </div>
   );

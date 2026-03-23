@@ -3,8 +3,6 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import type { ReviewSessionData, TemplateSearchResult } from '../core/types';
 
-export type DialogTab = 'review' | 'improve';
-
 export type TemplateSearchState = {
   query: string;
   loading: boolean;
@@ -19,12 +17,13 @@ export type ReviewWorkspaceState = {
   error: boolean;
   title: string;
   status: string;
-  tab: DialogTab;
   session: ReviewSessionData | null;
   sessionCommentDraft: string;
   cardCommentDrafts: Record<string, string>;
   expandedRows: Record<string, boolean>;
   templateSearch: Record<string, TemplateSearchState>;
+  suggestionsExpanded: boolean;
+  templateSearchOpen: Record<string, boolean>;
 };
 
 export type ReviewWorkspaceActions = {
@@ -33,13 +32,14 @@ export type ReviewWorkspaceActions = {
   setBusy: (busy: boolean, status?: string) => void;
   setStatus: (message: string, isError?: boolean) => void;
   close: () => void;
-  setTab: (tab: DialogTab) => void;
   toggleExpandedRow: (cardId: string) => void;
   setExpandedRow: (cardId: string, expanded: boolean) => void;
   setSessionCommentDraft: (value: string) => void;
   setCardCommentDraft: (cardId: string, value: string) => void;
   setTemplateSearchState: (cardId: string, next: Partial<TemplateSearchState>) => void;
   clearTemplateSearchState: (cardId: string) => void;
+  toggleSuggestionsExpanded: () => void;
+  setTemplateSearchOpen: (cardId: string, open: boolean) => void;
 };
 
 export type ReviewWorkspaceStore = ReturnType<typeof createReviewWorkspaceStore>;
@@ -71,12 +71,13 @@ export function createReviewWorkspaceStore() {
     error: false,
     title: 'Interactive Review',
     status: 'Ready.',
-    tab: 'review',
     session: null,
     sessionCommentDraft: '',
     cardCommentDrafts: {},
     expandedRows: {},
     templateSearch: {},
+    suggestionsExpanded: true,
+    templateSearchOpen: {},
     openLoading: (message, title = 'Interactive Review') =>
       set({
         open: true,
@@ -85,12 +86,13 @@ export function createReviewWorkspaceStore() {
         error: false,
         title,
         status: message,
-        tab: 'review',
         session: null,
         sessionCommentDraft: '',
         cardCommentDrafts: {},
         expandedRows: {},
-        templateSearch: {}
+        templateSearch: {},
+        suggestionsExpanded: true,
+        templateSearchOpen: {}
       }),
     replaceSession: (session, status = 'Session ready.', resetUi = false) => {
       const nextComments = commentsFromSession(session);
@@ -105,7 +107,8 @@ export function createReviewWorkspaceStore() {
         sessionCommentDraft: nextComments.sessionCommentDraft,
         cardCommentDrafts: nextComments.cardCommentDrafts,
         expandedRows: resetUi ? {} : state.expandedRows,
-        templateSearch: resetUi ? {} : state.templateSearch
+        templateSearch: resetUi ? {} : state.templateSearch,
+        ...(resetUi ? { suggestionsExpanded: true, templateSearchOpen: {} } : {})
       }));
     },
     setBusy: (busy, status) =>
@@ -129,7 +132,6 @@ export function createReviewWorkspaceStore() {
         error: false,
         status: 'Ready.'
       }),
-    setTab: (tab) => set({ tab }),
     toggleExpandedRow: (cardId) =>
       set((state) => ({
         expandedRows: {
@@ -167,7 +169,18 @@ export function createReviewWorkspaceStore() {
         const templateSearch = { ...state.templateSearch };
         delete templateSearch[cardId];
         return { templateSearch };
-      })
+      }),
+    toggleSuggestionsExpanded: () =>
+      set((state) => ({
+        suggestionsExpanded: !state.suggestionsExpanded
+      })),
+    setTemplateSearchOpen: (cardId, open) =>
+      set((state) => ({
+        templateSearchOpen: {
+          ...state.templateSearchOpen,
+          [cardId]: open
+        }
+      }))
   }));
 }
 

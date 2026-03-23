@@ -176,21 +176,19 @@ function SessionApp() {
     }
 
     const trimmed = queryValue.trim();
-    store.getState().setTemplateSearchState(cardId, {
-      query: queryValue,
-      loading: false,
-      error: '',
-      ...(trimmed ? {} : { results: [] })
-    });
-
     if (!trimmed) {
+      store.getState().setTemplateSearchState(cardId, {
+        loading: false,
+        error: '',
+        results: []
+      });
       return;
     }
 
     searchTimersRef.current.set(
       cardId,
       window.setTimeout(async () => {
-        store.getState().setTemplateSearchState(cardId, { query: queryValue, loading: true, error: '' });
+        store.getState().setTemplateSearchState(cardId, { loading: true, error: '' });
         try {
           const result = await searchReviewTemplates({
             ...getBaseArgs(),
@@ -201,7 +199,6 @@ function SessionApp() {
             return;
           }
           store.getState().setTemplateSearchState(cardId, {
-            query: queryValue,
             loading: false,
             error: '',
             results: result.results || []
@@ -211,7 +208,6 @@ function SessionApp() {
             return;
           }
           store.getState().setTemplateSearchState(cardId, {
-            query: queryValue,
             loading: false,
             error: error instanceof Error ? error.message : String(error),
             results: []
@@ -219,7 +215,7 @@ function SessionApp() {
         } finally {
           searchTimersRef.current.delete(cardId);
         }
-      }, 180)
+      }, 280)
     );
   }, [getBaseArgs, store]);
 
