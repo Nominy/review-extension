@@ -40,6 +40,7 @@ export type ReviewWorkspaceActions = {
   clearTemplateSearchState: (cardId: string) => void;
   toggleSuggestionsExpanded: () => void;
   setTemplateSearchOpen: (cardId: string, open: boolean) => void;
+  toggleAllRows: (expanded: boolean) => void;
 };
 
 export type ReviewWorkspaceStore = ReturnType<typeof createReviewWorkspaceStore>;
@@ -96,6 +97,12 @@ export function createReviewWorkspaceStore() {
       }),
     replaceSession: (session, status = 'Session ready.', resetUi = false) => {
       const nextComments = commentsFromSession(session);
+      const defaultExpanded: Record<string, boolean> = {};
+      if (resetUi) {
+        session.cards.forEach((card) => {
+          defaultExpanded[String(card.id || card.changeIndex)] = true;
+        });
+      }
       set((state) => ({
         open: true,
         busy: false,
@@ -106,7 +113,7 @@ export function createReviewWorkspaceStore() {
         session,
         sessionCommentDraft: nextComments.sessionCommentDraft,
         cardCommentDrafts: nextComments.cardCommentDrafts,
-        expandedRows: resetUi ? {} : state.expandedRows,
+        expandedRows: resetUi ? defaultExpanded : state.expandedRows,
         templateSearch: resetUi ? {} : state.templateSearch,
         ...(resetUi ? { suggestionsExpanded: true, templateSearchOpen: {} } : {})
       }));
@@ -180,7 +187,18 @@ export function createReviewWorkspaceStore() {
           ...state.templateSearchOpen,
           [cardId]: open
         }
-      }))
+      })),
+    toggleAllRows: (expanded) =>
+      set((state) => {
+        const next: Record<string, boolean> = {};
+        if (expanded) {
+          (state.session?.cards || []).forEach((card) => {
+            const id = String(card.id || card.changeIndex);
+            next[id] = true;
+          });
+        }
+        return { expandedRows: next };
+      })
   }));
 }
 
