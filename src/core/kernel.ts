@@ -255,19 +255,6 @@ export function createReviewKernel(): ReviewKernel {
     const inputBoxes = form.collectInputBoxesSnapshot();
 
     try {
-      if (!state.lastTranscriptionDiff || state.lastTranscriptionDiff.currentReviewActionId !== actionId) {
-        try {
-          await refreshLatestCurrent(actionId);
-          await ensureLatestTranscriptionDiff(actionId);
-        } catch (error) {
-          console.warn(
-            `[babel-review] failed to fetch Babel diff before analytics submit: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        }
-      }
-
       await submitTranscriptReviewActionAnalytics({
         backendBaseUrl: state.settings.backendBaseUrl.trim(),
         backendBaseUrlFallbacks: getBackendBaseCandidates(),
@@ -595,14 +582,6 @@ export function createReviewKernel(): ReviewKernel {
     dialog.setBusy(true, 'Refreshing analysis...');
 
     await refreshLatestCurrent(actionId);
-    try {
-      await ensureLatestTranscriptionDiff(actionId);
-    } catch (error) {
-      console.warn(
-        `[babel-review] failed to refresh Babel diff: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
     const session = await createInteractiveSession(actionId);
     dialog.renderSession(session, 'Refreshed with the latest review state.');
   }
@@ -692,16 +671,6 @@ export function createReviewKernel(): ReviewKernel {
 
     try {
       await refreshLatestCurrent(actionId);
-
-      try {
-        await ensureLatestTranscriptionDiff(actionId);
-      } catch (error) {
-        console.warn(
-          `[babel-review] failed to fetch Babel diff before generation: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
 
       requireBaseline();
 
