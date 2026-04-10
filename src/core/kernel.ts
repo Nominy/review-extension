@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from './constants';
+import { DEFAULT_SETTINGS, RUNTIME_POLICY, sanitizeSettings } from './runtime-config';
 import {
   createReviewSession,
   decideReviewSessionSuggestion,
@@ -69,6 +69,7 @@ export function createReviewKernel(): ReviewKernel {
     reviewActionId: '',
     original: null as NormalizedReviewAction | null,
     current: null as NormalizedReviewAction | null,
+    baselineHydratedFromStorage: false,
     lastAiReview: null as GeneratedReviewResponse['llm'] | null,
     lastTranscriptionDiff: null as BabelDiffPayload | null,
     activeSession: null as ReviewSessionData | null,
@@ -87,12 +88,9 @@ export function createReviewKernel(): ReviewKernel {
   const templateSearchRevisions = new Map<string, number>();
 
   function getBackendBaseCandidates(): string[] {
+    const settings = sanitizeSettings(state.settings);
     return Array.from(
-      new Set([
-        ...(state.settings.backendBaseUrlFallbacks || []),
-        ...(DEFAULT_SETTINGS.backendBaseUrlFallbacks || []),
-        state.settings.backendBaseUrl || DEFAULT_SETTINGS.backendBaseUrl
-      ].filter(Boolean))
+      new Set([settings.backendBaseUrl, ...settings.backendBaseUrlFallbacks, ...DEFAULT_SETTINGS.backendBaseUrlFallbacks].filter(Boolean))
     );
   }
 
@@ -196,12 +194,15 @@ export function createReviewKernel(): ReviewKernel {
       state.reviewActionId = actionId;
       state.original = normalized;
       state.current = normalized;
+      state.baselineHydratedFromStorage = false;
       state.lastTranscriptionDiff = null;
       updateActiveSession(null);
     } else {
       state.reviewActionId = actionId;
-      if (!state.original) {
+      if (!state.original || state.baselineHydratedFromStorage) {
         state.original = normalized;
+        state.baselineHydratedFromStorage = false;
+        state.lastTranscriptionDiff = null;
       }
       state.current = normalized;
     }
@@ -246,6 +247,10 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   async function submitAnalytics(entry: CapturedNetworkEntry): Promise<void> {
+    if (!RUNTIME_POLICY.enableSubmitAnalytics) {
+      return;
+    }
+
     const actionId = entry.extractedReviewActionId || state.reviewActionId || getReviewActionIdFromUrl();
     if (!actionId || !state.original) {
       return;
@@ -265,7 +270,7 @@ export function createReviewKernel(): ReviewKernel {
         inputBoxes,
         aiReview: state.lastAiReview,
         metadata: {
-          source: 'review-interceptor-extension',
+          source: 'review-helper-extension',
           capturedAt: new Date().toISOString(),
           trpcStatus: entry.status,
           trpcOk: entry.ok,
@@ -771,7 +776,7 @@ export function createReviewKernel(): ReviewKernel {
 
       try {
         const stored = await loadState();
-        state.settings = { ...DEFAULT_SETTINGS, ...(stored.settings || {}) };
+        state.settings = sanitizeSettings(stored.settings);
         const ids = Object.keys(stored.sessions || {});
         if (ids.length) {
           const pick =
@@ -782,6 +787,7 @@ export function createReviewKernel(): ReviewKernel {
             state.reviewActionId = session.reviewActionId || pick;
             state.original = session.original || null;
             state.current = session.current || session.original || null;
+            state.baselineHydratedFromStorage = !!session.original;
           }
         }
       } catch {

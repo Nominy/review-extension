@@ -1,20 +1,34 @@
 #!/usr/bin/env node
-import { execSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createDeflateRaw } from 'node:zlib';
+import { assertManifestMatchesFlavor, getBuildConfig } from './build-config.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const skipBuild = process.argv.includes('--no-build');
+const flavorArgIndex = process.argv.findIndex((item) => item === '--flavor');
+const flavor =
+  flavorArgIndex >= 0 && process.argv[flavorArgIndex + 1]
+    ? process.argv[flavorArgIndex + 1]
+    : 'release';
+
+const buildConfig = getBuildConfig(flavor);
+const buildDir = resolve(ROOT, 'build', buildConfig.flavor);
 
 if (!skipBuild) {
-  console.log('Building...');
-  execSync('node esbuild.config.mjs', { cwd: ROOT, stdio: 'inherit' });
+  console.log(`Building ${buildConfig.flavor} package...`);
+  execFileSync('node', ['esbuild.config.mjs', '--flavor', buildConfig.flavor], {
+    cwd: ROOT,
+    stdio: 'inherit'
+  });
 }
 
-const manifestRaw = readFileSync(join(ROOT, 'manifest.json'), 'utf-8').replace(/^\uFEFF/, '');
+const manifestRaw = readFileSync(join(buildDir, 'manifest.json'), 'utf-8').replace(/^\uFEFF/, '');
 const manifest = JSON.parse(manifestRaw);
-const zipName = `review-interceptor-extension-${manifest.version}.zip`;
+assertManifestMatchesFlavor(manifest, buildConfig.flavor);
+
+const zipName = `${buildConfig.artifactBaseName}-${manifest.version}.zip`;
 const zipPath = resolve(ROOT, '..', zipName);
 
 function collectFiles(dir, base) {
@@ -31,16 +45,26 @@ function collectFiles(dir, base) {
   return results;
 }
 
-const files = [
-  { full: join(ROOT, 'manifest.json'), rel: 'manifest.json' },
-  { full: join(ROOT, 'options.html'), rel: 'options.html' },
-  { full: join(ROOT, 'session.html'), rel: 'session.html' }
-];
-for (const { full, rel } of collectFiles(join(ROOT, 'dist'), 'dist')) {
-  if (full.endsWith('.js')) {
-    files.push({ full, rel });
+function validateManifestAssets(entries) {
+  const packagedFiles = new Set(entries.map((entry) => entry.rel.replace(/\\/g, '/')));
+  const requiredFiles = ['manifest.json', 'options.html', 'session.html'];
+  const iconFiles = Object.values(manifest.icons || {});
+  const contentFiles = (manifest.content_scripts || []).flatMap((entry) => entry.js || []);
+  const webResources = (manifest.web_accessible_resources || []).flatMap((entry) => entry.resources || []);
+
+  for (const rel of [...requiredFiles, ...iconFiles, ...contentFiles, ...webResources]) {
+    if (!packagedFiles.has(rel)) {
+      throw new Error(`Package is missing manifest-referenced asset: ${rel}`);
+    }
   }
 }
+
+const files = collectFiles(buildDir, '')
+  .filter((entry) => entry.rel)
+  .filter((entry) => !entry.rel.endsWith('.map'))
+  .map((entry) => ({ full: entry.full, rel: entry.rel }));
+
+validateManifestAssets(files);
 
 function crc32(buf) {
   let crc = 0xffffffff;
@@ -92,6 +116,10 @@ async function createZip(outPath, entries) {
   const { time: dosTime, date: dosDate } = dosDateTime(new Date());
 
   for (const { rel, full } of entries) {
+    if (!existsSync(full)) {
+      throw new Error(`Missing file during zip creation: ${full}`);
+    }
+
     const raw = readFileSync(full);
     const crc = crc32(raw);
     const compressed = await deflate(raw);
@@ -161,7 +189,7 @@ async function createZip(outPath, entries) {
   writeFileSync(outPath, Buffer.concat(parts));
 }
 
-console.log(`Packing ${files.length} files...`);
+console.log(`Packing ${buildConfig.flavor} build from ${buildDir}`);
 for (const file of files) {
   console.log(`  ${file.rel}`);
 }

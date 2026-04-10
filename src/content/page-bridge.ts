@@ -24,15 +24,15 @@ type CommandMessage = {
   transcriptionChunkId?: string;
 };
 
-interface InterceptorMeta {
+interface HelperMeta {
   method: string;
   url: string;
   startedAtMs: number;
   requestBody: string;
 }
 
-interface BabelInterceptorXmlHttpRequest extends XMLHttpRequest {
-  __babelInterceptor?: InterceptorMeta;
+interface BabelHelperXmlHttpRequest extends XMLHttpRequest {
+  __babelHelper?: HelperMeta;
 }
 
 function parseTargetNeedles(raw: string): string[] {
@@ -553,11 +553,11 @@ const originalOpen = XMLHttpRequest.prototype.open;
 const originalSend = XMLHttpRequest.prototype.send;
 
 XMLHttpRequest.prototype.open = function patchedOpen(
-  this: BabelInterceptorXmlHttpRequest,
+  this: BabelHelperXmlHttpRequest,
   method: string,
   url: string | URL
 ): ReturnType<typeof originalOpen> {
-  this.__babelInterceptor = {
+  this.__babelHelper = {
     method: method || 'GET',
     url: typeof url === 'string' ? url : String(url || ''),
     startedAtMs: 0,
@@ -567,10 +567,10 @@ XMLHttpRequest.prototype.open = function patchedOpen(
 };
 
 XMLHttpRequest.prototype.send = function patchedSend(
-  this: BabelInterceptorXmlHttpRequest,
+  this: BabelHelperXmlHttpRequest,
   body?: Document | XMLHttpRequestBodyInit | null
 ): ReturnType<typeof originalSend> {
-  const meta = this.__babelInterceptor || {
+  const meta = this.__babelHelper || {
     method: 'GET',
     url: '',
     startedAtMs: 0,
@@ -579,7 +579,7 @@ XMLHttpRequest.prototype.send = function patchedSend(
 
   meta.startedAtMs = Date.now();
   meta.requestBody = stringifyBody(body);
-  this.__babelInterceptor = meta;
+  this.__babelHelper = meta;
 
   const endpoint = detectEndpoint(meta.url);
   if (endpoint) {

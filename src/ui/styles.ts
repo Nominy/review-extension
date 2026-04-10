@@ -247,6 +247,17 @@ const STYLE_TEXT = `
     resize: vertical;
   }
 
+  .br-readonly-value {
+    width: 100%;
+    border: 1px solid var(--br-line);
+    border-radius: 6px;
+    background: #fff;
+    padding: 7px 9px;
+    font: inherit;
+    color: var(--br-ink);
+    word-break: break-word;
+  }
+
   .br-button {
     border: 1px solid var(--br-line);
     border-radius: 6px;

@@ -4,40 +4,58 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createManifest, getBuildConfig, getPackageVersion } from '../scripts/build-config.mjs';
 
-test('manifest targets bundled dist assets', () => {
-  const raw = fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8').replace(/^\uFEFF/, '');
-  const manifest = JSON.parse(raw);
+const rootDir = fileURLToPath(new URL('../', import.meta.url));
 
-  assert.equal(manifest.content_scripts[0].js[0], 'dist/content/entry.js');
-  assert.equal(manifest.web_accessible_resources[0].resources[0], 'dist/content/page-bridge.js');
-  assert.equal(manifest.permissions.includes('storage'), true);
-  assert.equal(manifest.options_page, 'options.html');
-});
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, ''));
+}
 
-test('manifest matches dashboard transcription routes', () => {
-  const raw = fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8').replace(/^\uFEFF/, '');
-  const manifest = JSON.parse(raw);
+test('release manifest matches package version and minimum permissions', () => {
+  const manifest = createManifest('release');
 
-  assert.equal(manifest.content_scripts[0].matches.includes('https://dashboard.babel.audio/*'), true);
+  assert.equal(manifest.version, getPackageVersion());
+  assert.equal(manifest.name, 'Babel Review Helper');
+  assert.deepEqual(manifest.permissions, ['storage']);
+  assert.deepEqual(manifest.host_permissions, ['https://dashboard.babel.audio/*', 'https://reviewgen.ovh/*']);
   assert.equal(
-    manifest.web_accessible_resources[0].matches.includes('https://dashboard.babel.audio/*'),
-    true
+    manifest.web_accessible_resources[0].resources.some((resource) => resource.endsWith('.map')),
+    false
   );
 });
 
-test('pack includes static pages referenced by manifest', () => {
-  const rootDir = new URL('../', import.meta.url);
-  const zipPath = path.resolve(fileURLToPath(rootDir), '..', 'review-interceptor-extension-0.3.0.zip');
+test('dev manifest preserves localhost access for local iteration', () => {
+  const manifest = createManifest('dev');
+  assert.equal(manifest.name.includes('(Dev)'), true);
+  assert.equal(manifest.host_permissions.includes('http://127.0.0.1/*'), true);
+  assert.equal(manifest.host_permissions.includes('http://localhost/*'), true);
+});
 
-  execFileSync('node', ['scripts/pack.mjs', '--no-build'], {
+test('release pack includes all manifest-referenced files and excludes sourcemaps', () => {
+  const buildConfig = getBuildConfig('release');
+  const zipPath = path.resolve(rootDir, '..', `${buildConfig.artifactBaseName}-${buildConfig.version}.zip`);
+
+  execFileSync('node', ['esbuild.config.mjs', '--flavor', 'release'], {
+    cwd: rootDir,
+    stdio: 'ignore'
+  });
+  execFileSync('node', ['scripts/pack.mjs', '--flavor', 'release', '--no-build'], {
     cwd: rootDir,
     stdio: 'ignore'
   });
 
+  const manifest = readJson(path.resolve(rootDir, 'build', 'release', 'manifest.json'));
   const zipText = fs.readFileSync(zipPath).toString('utf8');
 
   assert.match(zipText, /manifest\.json/);
   assert.match(zipText, /options\.html/);
   assert.match(zipText, /session\.html/);
+
+  for (const iconPath of Object.values(manifest.icons || {})) {
+    const escaped = String(iconPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(zipText, new RegExp(escaped));
+  }
+
+  assert.equal(/\.map/.test(zipText), false);
 });

@@ -1,17 +1,30 @@
-﻿{
+{
   "manifest_version": 3,
-  "name": "Babel Review Action Interceptor (Dev)",
+  "name": "Babel Review Helper",
   "version": "0.3.0",
-  "description": "Review assistant: intercepts review APIs and uses Bun backend (local or remote) for metrics, prompts, interactive sessions, and LLM feedback.",
+  "description": "Review helper for Babel transcription reviews with guided review sessions and one-click feedback application.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
     "https://dashboard.babel.audio/*",
-    "https://reviewgen.ovh/*",
-    "http://127.0.0.1/*",
-    "http://localhost/*"
+    "https://reviewgen.ovh/*"
   ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Babel Review Helper",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
   "options_page": "options.html",
   "content_scripts": [
     {
@@ -29,8 +42,7 @@
       "resources": [
         "dist/content/page-bridge.js",
         "session.html",
-        "dist/session/entry.js",
-        "dist/session/entry.js.map"
+        "dist/session/entry.js"
       ],
       "matches": [
         "https://dashboard.babel.audio/*"

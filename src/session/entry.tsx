@@ -10,7 +10,7 @@ import {
   searchReviewTemplates,
   updateReviewSessionCardTemplateMatch
 } from '../core/backend-client';
-import { DEFAULT_SETTINGS } from '../core/constants';
+import { DEFAULT_SETTINGS, sanitizeSettings } from '../core/runtime-config';
 import { enqueueApplyCommand, loadState } from '../core/storage';
 import type { ReviewSessionApplyCommand, ReviewSessionData } from '../core/types';
 import { ReviewWorkspace } from '../ui/review-workspace';
@@ -320,11 +320,12 @@ function SessionApp() {
     ensureReviewUiStyles();
     void (async () => {
       const stored = await loadState();
+      const settings = sanitizeSettings(stored.settings);
       settingsRef.current = {
-        backendBaseUrl: stored.settings.backendBaseUrl || DEFAULT_SETTINGS.backendBaseUrl,
+        backendBaseUrl: settings.backendBaseUrl || DEFAULT_SETTINGS.backendBaseUrl,
         backendBaseUrlFallbacks:
-          stored.settings.backendBaseUrlFallbacks?.length
-            ? stored.settings.backendBaseUrlFallbacks
+          settings.backendBaseUrlFallbacks?.length
+            ? settings.backendBaseUrlFallbacks
             : [...DEFAULT_SETTINGS.backendBaseUrlFallbacks]
       };
 

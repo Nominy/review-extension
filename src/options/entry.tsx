@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { DEFAULT_SETTINGS } from '../core/constants';
+import { DEFAULT_SETTINGS, RUNTIME_POLICY, sanitizeSettings } from '../core/runtime-config';
 import { loadState, saveState } from '../core/storage';
 import { ensureReviewUiStyles } from '../ui/styles';
 
@@ -16,7 +16,7 @@ function OptionsApp() {
     void (async () => {
       try {
         const state = await loadState();
-        const settings = state.settings;
+        const settings = sanitizeSettings(state.settings);
         setWorkflowMode(settings.workflowMode || DEFAULT_SETTINGS.workflowMode);
         setBackendBaseUrl(settings.backendBaseUrl || DEFAULT_SETTINGS.backendBaseUrl);
         setBackendFallbacks((settings.backendBaseUrlFallbacks || DEFAULT_SETTINGS.backendBaseUrlFallbacks).join('\n'));
@@ -33,7 +33,7 @@ function OptionsApp() {
   async function persist(): Promise<void> {
     const state = await loadState();
     const timeout = Number(refreshTimeoutMs);
-    state.settings = {
+    state.settings = sanitizeSettings({
       ...state.settings,
       workflowMode,
       backendBaseUrl: backendBaseUrl.trim() || DEFAULT_SETTINGS.backendBaseUrl,
@@ -42,7 +42,7 @@ function OptionsApp() {
         .map((item) => item.trim())
         .filter(Boolean),
       refreshTimeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_SETTINGS.refreshTimeoutMs
-    };
+    });
     await saveState(state);
     setStatus('Settings saved.');
     setError(false);
@@ -87,24 +87,37 @@ function OptionsApp() {
 
               <div className="br-block">
                 <label className="br-label" htmlFor="backendBaseUrl">Primary backend URL</label>
-                <input
-                  className="br-input"
-                  id="backendBaseUrl"
-                  onChange={(event) => setBackendBaseUrl(event.target.value)}
-                  type="url"
-                  value={backendBaseUrl}
-                />
+                {RUNTIME_POLICY.allowBackendOverrides ? (
+                  <input
+                    className="br-input"
+                    id="backendBaseUrl"
+                    onChange={(event) => setBackendBaseUrl(event.target.value)}
+                    type="url"
+                    value={backendBaseUrl}
+                  />
+                ) : (
+                  <div className="br-readonly-value">{backendBaseUrl}</div>
+                )}
               </div>
 
-              <div className="br-block">
-                <label className="br-label" htmlFor="backendFallbacks">Fallback backend URLs</label>
-                <textarea
-                  className="br-textarea"
-                  id="backendFallbacks"
-                  onChange={(event) => setBackendFallbacks(event.target.value)}
-                  value={backendFallbacks}
-                />
-              </div>
+              {RUNTIME_POLICY.allowBackendOverrides ? (
+                <div className="br-block">
+                  <label className="br-label" htmlFor="backendFallbacks">Fallback backend URLs</label>
+                  <textarea
+                    className="br-textarea"
+                    id="backendFallbacks"
+                    onChange={(event) => setBackendFallbacks(event.target.value)}
+                    value={backendFallbacks}
+                  />
+                </div>
+              ) : (
+                <div className="br-block">
+                  <div className="br-label">Backend configuration</div>
+                  <div className="br-helper">
+                    This Chrome Web Store build is locked to the production backend.
+                  </div>
+                </div>
+              )}
 
               <div className="br-block">
                 <label className="br-label" htmlFor="refreshTimeoutMs">Refresh timeout (ms)</label>
