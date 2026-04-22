@@ -21,6 +21,10 @@ Load unpacked from:
 - `review-interceptor-extension/build/dev/`
 - `review-interceptor-extension/build/release/`
 
+Versioning:
+- `npm run build:dev`, `npm run build:release`, and `npm run build:zip` are pure and do not change version files.
+- `npm run version:patch` bumps `package.json`, `manifest.json`, and `package-lock.json` for the next release.
+
 Packaged release artifact:
 
 - `.artifacts/babel-review-helper-<version>.zip`
@@ -57,7 +61,7 @@ Supporting release docs live in [docs/chrome-store-release.md](/C:/Users/User/De
 
 GitHub Releases are the canonical home for packaged ZIPs. The manual release workflow builds the `.artifacts/` ZIP, tags the released commit as `v<version>`, and uploads the ZIP asset there.
 
-Chrome Web Store deployment uses `.github/workflows/deploy-review-interceptor-extension.yml`. It validates the release build, packages the `.artifacts/` ZIP, publishes it to the Chrome Web Store, and then updates the matching GitHub Release asset.
+Chrome Web Store deployment uses `.github/workflows/deploy-review-interceptor-extension.yml`. It runs `npm run version:patch`, validates the release build, packages the `.artifacts/` ZIP, publishes it to the Chrome Web Store, commits the bumped version files, and then updates the matching GitHub Release asset.
 
 Required GitHub Actions secrets:
 - `CWS_CLIENT_ID`

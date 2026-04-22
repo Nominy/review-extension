@@ -10,6 +10,7 @@
     "build:watch": "node esbuild.config.mjs --flavor dev --watch",
     "build:zip": "node scripts/pack.mjs --flavor release",
     "build:zip:dev": "node scripts/pack.mjs --flavor dev",
+    "version:patch": "node scripts/increment-version.mjs",
     "publish:cws": "node scripts/publish-cws.mjs",
     "setup:github-secrets": "node scripts/setup-github-secrets.mjs",
     "typecheck": "tsc --noEmit",
