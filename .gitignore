@@ -5,6 +5,7 @@ dist/
 build/
 coverage/
 tmp/
+.artifacts/
 
 *.log
 *.tmp

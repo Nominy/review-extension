@@ -23,7 +23,7 @@ Load unpacked from:
 
 Packaged release artifact:
 
-- `../babel-review-helper-0.3.0.zip`
+- `.artifacts/babel-review-helper-<version>.zip`
 
 ## Architecture
 
@@ -54,6 +54,8 @@ Build outputs are generated into `build/<flavor>/`, including:
 - Submit-time analytics from the extension are disabled in release builds.
 
 Supporting release docs live in [docs/chrome-store-release.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-release.md), [docs/chrome-store-data-disclosure.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-data-disclosure.md), and [docs/privacy-policy.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/privacy-policy.md).
+
+GitHub Releases are the canonical home for packaged ZIPs. The manual release workflow builds the `.artifacts/` ZIP, tags the released commit as `v<version>`, and uploads the ZIP asset there.
 
 ## Validation
 

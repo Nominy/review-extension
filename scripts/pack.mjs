@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createDeflateRaw } from 'node:zlib';
 import { assertManifestMatchesFlavor, getBuildConfig } from './build-config.mjs';
@@ -29,7 +29,12 @@ const manifest = JSON.parse(manifestRaw);
 assertManifestMatchesFlavor(manifest, buildConfig.flavor);
 
 const zipName = `${buildConfig.artifactBaseName}-${manifest.version}.zip`;
-const zipPath = resolve(ROOT, '..', zipName);
+const zipOutputDir = process.env.BABEL_EXTENSION_ZIP_DIR
+  ? resolve(ROOT, process.env.BABEL_EXTENSION_ZIP_DIR)
+  : resolve(ROOT, '.artifacts');
+const zipPath = process.env.BABEL_EXTENSION_ZIP_PATH
+  ? resolve(ROOT, process.env.BABEL_EXTENSION_ZIP_PATH)
+  : resolve(zipOutputDir, zipName);
 
 function collectFiles(dir, base) {
   const results = [];
@@ -110,6 +115,7 @@ async function deflate(data) {
 }
 
 async function createZip(outPath, entries) {
+  mkdirSync(zipOutputDir, { recursive: true });
   const centralHeaders = [];
   let offset = 0;
   const parts = [];

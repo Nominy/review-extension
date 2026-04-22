@@ -34,7 +34,7 @@ test('dev manifest preserves localhost access for local iteration', () => {
 
 test('release pack includes all manifest-referenced files and excludes sourcemaps', () => {
   const buildConfig = getBuildConfig('release');
-  const zipPath = path.resolve(rootDir, '..', `${buildConfig.artifactBaseName}-${buildConfig.version}.zip`);
+  const zipPath = path.resolve(rootDir, '.artifacts', `${buildConfig.artifactBaseName}-${buildConfig.version}.zip`);
 
   execFileSync('node', ['esbuild.config.mjs', '--flavor', 'release'], {
     cwd: rootDir,
