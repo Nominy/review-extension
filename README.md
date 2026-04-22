@@ -57,6 +57,21 @@ Supporting release docs live in [docs/chrome-store-release.md](/C:/Users/User/De
 
 GitHub Releases are the canonical home for packaged ZIPs. The manual release workflow builds the `.artifacts/` ZIP, tags the released commit as `v<version>`, and uploads the ZIP asset there.
 
+Chrome Web Store deployment uses `.github/workflows/deploy-review-interceptor-extension.yml`. It validates the release build, packages the `.artifacts/` ZIP, publishes it to the Chrome Web Store, and then updates the matching GitHub Release asset.
+
+Required GitHub Actions secrets:
+- `CWS_CLIENT_ID`
+- `CWS_CLIENT_SECRET`
+- `CWS_REFRESH_TOKEN`
+- `CWS_PUBLISHER_ID`
+- `CWS_EXTENSION_ID`
+
+Optional GitHub Actions secret:
+- `CWS_ACCESS_TOKEN`
+
+For local publishing helpers, keep Chrome Web Store credentials in `.env.cws.local` and start from `.env.cws.example`.
+To seed the GitHub Actions secrets from the local dotenv file, run `node scripts/setup-github-secrets.mjs OWNER/REPO`.
+
 ## Validation
 
 - `npm run typecheck`
