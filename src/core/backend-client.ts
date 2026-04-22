@@ -1,4 +1,5 @@
-﻿import type {
+import { createJsonClient, normalizeBaseUrl } from '@nominy/babel-extension-frontend';
+import type {
   BabelDiffPayload,
   GeneratedReviewResponse,
   InputSnapshot,
@@ -8,17 +9,6 @@
   ReviewSessionFinalizeResponse,
   TemplateSearchResponse
 } from './types';
-
-class HttpStatusError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'HttpStatusError';
-  }
-}
-
-function normalizeBaseUrl(value: string): string {
-  return value.trim().replace(/\/+$/, '');
-}
 
 function uniq(values: string[]): string[] {
   const out: string[] = [];
@@ -32,90 +22,6 @@ function uniq(values: string[]): string[] {
 
 function buildBaseCandidates(primary: string, fallbacks: string[]): string[] {
   return uniq([primary, ...fallbacks].map(normalizeBaseUrl).filter(Boolean));
-}
-
-async function parseResponse<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  let data: unknown = null;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    const errorMessage =
-      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-        ? data.error
-        : `HTTP ${response.status}: ${text.slice(0, 240)}`;
-    throw new HttpStatusError(errorMessage);
-  }
-
-  if (!data || typeof data !== 'object') {
-    throw new Error('Backend returned non-JSON payload.');
-  }
-
-  return data as T;
-}
-
-async function postJson<T>(url: string, payload: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  return parseResponse<T>(response);
-}
-
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    method: 'GET'
-  });
-
-  return parseResponse<T>(response);
-}
-
-async function postJsonWithFallback<T>(path: string, payload: unknown, baseCandidates: string[]): Promise<T> {
-  if (!baseCandidates.length) {
-    throw new Error('Backend URL is required.');
-  }
-
-  const errors: string[] = [];
-  for (const base of baseCandidates) {
-    try {
-      return await postJson<T>(`${base}${path}`, payload);
-    } catch (error) {
-      errors.push(`${base}: ${error instanceof Error ? error.message : String(error)}`);
-      if (error instanceof HttpStatusError) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(`Could not reach backend. Tried: ${errors.join(' | ')}`);
-}
-
-async function getJsonWithFallback<T>(path: string, baseCandidates: string[]): Promise<T> {
-  if (!baseCandidates.length) {
-    throw new Error('Backend URL is required.');
-  }
-
-  const errors: string[] = [];
-  for (const base of baseCandidates) {
-    try {
-      return await getJson<T>(`${base}${path}`);
-    } catch (error) {
-      errors.push(`${base}: ${error instanceof Error ? error.message : String(error)}`);
-      if (error instanceof HttpStatusError) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(`Could not reach backend. Tried: ${errors.join(' | ')}`);
 }
 
 interface RequestBase {
@@ -132,18 +38,20 @@ interface SessionRequestBase {
   backendBaseUrlFallbacks: string[];
 }
 
+function getClient(primary: string, fallbacks: string[]) {
+  const baseCandidates = buildBaseCandidates(primary, fallbacks);
+  return createJsonClient({
+    getBaseCandidates: () => baseCandidates
+  });
+}
+
 export async function generate(args: RequestBase): Promise<GeneratedReviewResponse> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<GeneratedReviewResponse>(
-    '/api/review/generate',
-    {
-      reviewActionId: args.reviewActionId,
-      original: args.original,
-      current: args.current,
-      babelDiff: args.babelDiff
-    },
-    baseCandidates
-  );
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<GeneratedReviewResponse>('/api/review/generate', {
+    reviewActionId: args.reviewActionId,
+    original: args.original,
+    current: args.current,
+    babelDiff: args.babelDiff
+  });
 }
 
 export async function submitTranscriptReviewActionAnalytics(
@@ -153,34 +61,24 @@ export async function submitTranscriptReviewActionAnalytics(
     metadata: Record<string, unknown>;
   }
 ): Promise<unknown> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback(
-    '/api/trpc/transcriptions.submitTranscriptReviewAction',
-    {
-      reviewActionId: args.reviewActionId,
-      original: args.original,
-      current: args.current,
-      babelDiff: args.babelDiff,
-      inputBoxes: args.inputBoxes,
-      aiReview: args.aiReview,
-      metadata: args.metadata
-    },
-    baseCandidates
-  );
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post('/api/trpc/transcriptions.submitTranscriptReviewAction', {
+    reviewActionId: args.reviewActionId,
+    original: args.original,
+    current: args.current,
+    babelDiff: args.babelDiff,
+    inputBoxes: args.inputBoxes,
+    aiReview: args.aiReview,
+    metadata: args.metadata
+  });
 }
 
 export async function createReviewSession(args: RequestBase): Promise<ReviewSessionCreateResponse> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionCreateResponse>(
-    '/api/review/sessions',
-    {
-      reviewActionId: args.reviewActionId,
-      original: args.original,
-      current: args.current,
-      babelDiff: args.babelDiff
-    },
-    baseCandidates
-  );
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionCreateResponse>('/api/review/sessions', {
+    reviewActionId: args.reviewActionId,
+    original: args.original,
+    current: args.current,
+    babelDiff: args.babelDiff
+  });
 }
 
 export async function getReviewSession(
@@ -188,8 +86,9 @@ export async function getReviewSession(
     sessionId: string;
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return getJsonWithFallback<ReviewSessionData>(`/api/review/sessions/${encodeURIComponent(args.sessionId)}`, baseCandidates);
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).get<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}`
+  );
 }
 
 export async function searchReviewTemplates(
@@ -198,13 +97,14 @@ export async function searchReviewTemplates(
     limit?: number;
   }
 ): Promise<TemplateSearchResponse> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
   const search = new URLSearchParams();
   search.set('q', args.query);
   if (Number.isFinite(args.limit)) {
     search.set('limit', String(args.limit));
   }
-  return getJsonWithFallback<TemplateSearchResponse>(`/api/review/templates/search?${search.toString()}`, baseCandidates);
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).get<TemplateSearchResponse>(
+    `/api/review/templates/search?${search.toString()}`
+  );
 }
 
 export async function saveReviewSessionComments(
@@ -214,45 +114,60 @@ export async function saveReviewSessionComments(
     cardComments: Record<string, string>;
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionData>(
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
     `/api/review/sessions/${encodeURIComponent(args.sessionId)}/comments`,
     {
       sessionComment: args.sessionComment,
       cardComments: args.cardComments
-    },
-    baseCandidates
+    }
   );
 }
 
 export async function updateReviewSessionCardTemplateMatch(
   args: SessionRequestBase & {
     sessionId: string;
-    cardId: string;
-    templateId: string;
+    changeIndex?: number;
+    matchedTemplateId?: string;
+    cardId?: string;
+    templateId?: string;
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-match`,
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/card-template-match`,
     {
-      templateId: args.templateId
-    },
-    baseCandidates
+      ...(typeof args.changeIndex === 'number' ? { changeIndex: args.changeIndex } : {}),
+      ...(args.matchedTemplateId ? { matchedTemplateId: args.matchedTemplateId } : {}),
+      ...(args.cardId ? { cardId: args.cardId } : {}),
+      ...(args.templateId ? { templateId: args.templateId } : {})
+    }
   );
 }
 
 export async function clearReviewSessionCardTemplateMatch(
   args: SessionRequestBase & {
     sessionId: string;
-    cardId: string;
+    changeIndex?: number;
+    cardId?: string;
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-clear`,
-    {},
-    baseCandidates
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/card-template-match/clear`,
+    {
+      ...(typeof args.changeIndex === 'number' ? { changeIndex: args.changeIndex } : {}),
+      ...(args.cardId ? { cardId: args.cardId } : {})
+    }
+  );
+}
+
+export async function finalizeReviewSession(
+  args: SessionRequestBase & {
+    sessionId: string;
+    mode?: 'apply' | 'skip';
+  }
+): Promise<ReviewSessionFinalizeResponse> {
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionFinalizeResponse>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/finalize`,
+    args.mode ? { mode: args.mode } : {}
   );
 }
 
@@ -261,11 +176,9 @@ export async function generateReviewSessionSuggestions(
     sessionId: string;
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/template-suggestions`,
-    {},
-    baseCandidates
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/suggestions/generate`,
+    {}
   );
 }
 
@@ -276,30 +189,10 @@ export async function decideReviewSessionSuggestion(
     decision: 'approved' | 'rejected';
   }
 ): Promise<ReviewSessionData> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/template-suggestions/${encodeURIComponent(
-      args.proposalId
-    )}/decision`,
+  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/suggestions/${encodeURIComponent(args.proposalId)}/decision`,
     {
       decision: args.decision
-    },
-    baseCandidates
-  );
-}
-
-export async function finalizeReviewSession(
-  args: SessionRequestBase & {
-    sessionId: string;
-    mode: 'apply' | 'skip';
-  }
-): Promise<ReviewSessionFinalizeResponse> {
-  const baseCandidates = buildBaseCandidates(args.backendBaseUrl, args.backendBaseUrlFallbacks);
-  return postJsonWithFallback<ReviewSessionFinalizeResponse>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/finalize`,
-    {
-      mode: args.mode
-    },
-    baseCandidates
+    }
   );
 }

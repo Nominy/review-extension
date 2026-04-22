@@ -17,6 +17,7 @@
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
+    "@nominy/babel-extension-build": "file:../../shared/babel-extension-platform/packages/babel-extension-build",
     "@types/chrome": "^0.0.325",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -24,6 +25,8 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
+    "@nominy/babel-babel-runtime": "file:../../shared/babel-extension-platform/packages/babel-babel-runtime",
+    "@nominy/babel-extension-frontend": "file:../../shared/babel-extension-platform/packages/babel-extension-frontend",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zustand": "^5.0.11"
