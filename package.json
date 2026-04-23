@@ -2,6 +2,7 @@
   "name": "babel-review-helper-extension",
   "version": "0.3.1",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.mjs --flavor dev",
