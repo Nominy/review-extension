@@ -32,6 +32,23 @@ test('dev manifest preserves localhost access for local iteration', () => {
   assert.equal(manifest.host_permissions.includes('http://localhost/*'), true);
 });
 
+test('root manifest references tracked icon assets for local unpacked loading', () => {
+  const manifest = readJson(path.resolve(rootDir, 'manifest.json'));
+  const iconPaths = [
+    ...Object.values(manifest.icons || {}),
+    ...Object.values(manifest.action?.default_icon || {})
+  ];
+
+  assert.ok(iconPaths.length > 0);
+  for (const iconPath of iconPaths) {
+    assert.equal(
+      fs.existsSync(path.resolve(rootDir, iconPath)),
+      true,
+      `root manifest icon should exist: ${iconPath}`
+    );
+  }
+});
+
 test('release pack includes all manifest-referenced files and excludes sourcemaps', () => {
   const buildConfig = getBuildConfig('release');
   const zipPath = path.resolve(rootDir, '.artifacts', `${buildConfig.artifactBaseName}-${buildConfig.version}.zip`);
