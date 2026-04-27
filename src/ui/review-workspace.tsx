@@ -254,6 +254,21 @@ const ReviewCard = memo(function ReviewCard(props: {
             </div>
           </div>
           <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+            {props.card.matchedTemplateId ? (
+              <button
+                className="br-button"
+                data-variant="danger"
+                data-size="sm"
+                disabled={props.busy}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onTemplateClear(cardId);
+                }}
+                type="button"
+              >
+                Remove match
+              </button>
+            ) : null}
             <span className="br-badge" data-variant="warning">{props.card.type || 'UNKNOWN'}</span>
             <span style={{fontSize: '12px', color: 'var(--br-faint)'}}>{expanded ? '▲' : '▼'}</span>
           </div>

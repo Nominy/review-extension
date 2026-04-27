@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Babel Review Helper",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Review helper for Babel transcription reviews with guided review sessions and one-click feedback application.",
   "permissions": [
     "storage"
