@@ -126,19 +126,14 @@ export async function saveReviewSessionComments(
 export async function updateReviewSessionCardTemplateMatch(
   args: SessionRequestBase & {
     sessionId: string;
-    changeIndex?: number;
-    matchedTemplateId?: string;
-    cardId?: string;
-    templateId?: string;
+    cardId: string;
+    templateId: string;
   }
 ): Promise<ReviewSessionData> {
   return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/card-template-match`,
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-match`,
     {
-      ...(typeof args.changeIndex === 'number' ? { changeIndex: args.changeIndex } : {}),
-      ...(args.matchedTemplateId ? { matchedTemplateId: args.matchedTemplateId } : {}),
-      ...(args.cardId ? { cardId: args.cardId } : {}),
-      ...(args.templateId ? { templateId: args.templateId } : {})
+      templateId: args.templateId
     }
   );
 }
@@ -146,16 +141,12 @@ export async function updateReviewSessionCardTemplateMatch(
 export async function clearReviewSessionCardTemplateMatch(
   args: SessionRequestBase & {
     sessionId: string;
-    changeIndex?: number;
-    cardId?: string;
+    cardId: string;
   }
 ): Promise<ReviewSessionData> {
   return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/card-template-match/clear`,
-    {
-      ...(typeof args.changeIndex === 'number' ? { changeIndex: args.changeIndex } : {}),
-      ...(args.cardId ? { cardId: args.cardId } : {})
-    }
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/cards/${encodeURIComponent(args.cardId)}/template-clear`,
+    {}
   );
 }
 
@@ -177,7 +168,7 @@ export async function generateReviewSessionSuggestions(
   }
 ): Promise<ReviewSessionData> {
   return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/suggestions/generate`,
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/template-suggestions`,
     {}
   );
 }
@@ -190,7 +181,7 @@ export async function decideReviewSessionSuggestion(
   }
 ): Promise<ReviewSessionData> {
   return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/suggestions/${encodeURIComponent(args.proposalId)}/decision`,
+    `/api/review/sessions/${encodeURIComponent(args.sessionId)}/template-suggestions/${encodeURIComponent(args.proposalId)}/decision`,
     {
       decision: args.decision
     }

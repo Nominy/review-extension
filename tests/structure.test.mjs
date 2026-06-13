@@ -49,3 +49,16 @@ test('release options page advertises production lock', () => {
   const source = fs.readFileSync(new URL('../src/options/entry.tsx', import.meta.url), 'utf8');
   assert.match(source, /Chrome Web Store build is locked to the production backend/);
 });
+
+test('review session client uses current backend route contracts', () => {
+  const source = fs.readFileSync(new URL('../src/core/backend-client.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /\/cards\/\$\{encodeURIComponent\(args\.cardId\)\}\/template-match/);
+  assert.match(source, /\/cards\/\$\{encodeURIComponent\(args\.cardId\)\}\/template-clear/);
+  assert.match(source, /\/template-suggestions`/);
+  assert.match(source, /\/template-suggestions\/\$\{encodeURIComponent\(args\.proposalId\)\}\/decision/);
+
+  assert.doesNotMatch(source, /\/card-template-match/);
+  assert.doesNotMatch(source, /\/suggestions\/generate/);
+  assert.doesNotMatch(source, /\/suggestions\/\$\{encodeURIComponent\(args\.proposalId\)\}/);
+});
