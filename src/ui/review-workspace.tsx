@@ -406,7 +406,17 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
         <div className="br-shell-surface">
           <div className="br-header">
             <div>
-              <div className="br-header-title">{title}</div>
+              <div className="br-header-title-row">
+                <div className="br-header-title">{title}</div>
+                <a
+                  className="br-support-link"
+                  href="https://ko-fi.com/naftsan"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Support on Ko-fi
+                </a>
+              </div>
               <div className="br-header-status" data-error={error}>
                 {status}
               </div>
