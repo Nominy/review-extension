@@ -77,6 +77,25 @@ const STYLE_TEXT = `
     font-size: 13px;
   }
 
+  .br-header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .br-support-link {
+    color: var(--br-accent);
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .br-support-link:hover {
+    text-decoration: underline;
+  }
+
   .br-header-status {
     font-size: 12px;
     color: var(--br-muted);

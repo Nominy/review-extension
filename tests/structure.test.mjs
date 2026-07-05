@@ -50,6 +50,27 @@ test('release options page advertises production lock', () => {
   assert.match(source, /Chrome Web Store build is locked to the production backend/);
 });
 
+test('options page includes passive Ko-fi support link without new host permissions', () => {
+  const source = fs.readFileSync(new URL('../src/options/entry.tsx', import.meta.url), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const hostPermissions = manifest.host_permissions || [];
+
+  assert.match(source, /https:\/\/ko-fi\.com\/naftsan/);
+  assert.match(source, /Support on Ko-fi/);
+  assert.equal(hostPermissions.some((permission) => /ko-fi\.com/.test(permission)), false);
+});
+
+test('review workspace surface includes a small Ko-fi link beside the header', () => {
+  const workspaceSource = fs.readFileSync(new URL('../src/ui/review-workspace.tsx', import.meta.url), 'utf8');
+  const stylesSource = fs.readFileSync(new URL('../src/ui/styles.ts', import.meta.url), 'utf8');
+
+  assert.match(workspaceSource, /br-header-title/);
+  assert.match(workspaceSource, /https:\/\/ko-fi\.com\/naftsan/);
+  assert.match(workspaceSource, /Support on Ko-fi/);
+  assert.match(workspaceSource, /br-support-link/);
+  assert.match(stylesSource, /\.br-support-link/);
+});
+
 test('review session client uses current backend route contracts', () => {
   const source = fs.readFileSync(new URL('../src/core/backend-client.ts', import.meta.url), 'utf8');
 

@@ -160,6 +160,21 @@ function OptionsApp() {
                   Reset defaults
                 </button>
               </div>
+              <div className="br-block">
+                <div className="br-helper">
+                  These Babel tools are maintained by Naftsan. If they save you time,{' '}
+                  <a
+                    className="br-button"
+                    data-size="sm"
+                    data-variant="ghost"
+                    href="https://ko-fi.com/naftsan"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Support on Ko-fi
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
