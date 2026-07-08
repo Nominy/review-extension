@@ -28,7 +28,8 @@ import { createReviewFormService } from '../services/review-form-service';
 
 interface CaptureWaiter {
   actionId: string;
-  resolve: () => void;
+  accept?: (action: NormalizedReviewAction, entry: CapturedNetworkEntry) => boolean;
+  resolve: (actionId: string) => void;
   reject: (error: Error) => void;
   timer: number;
 }
@@ -132,12 +133,18 @@ export function createReviewKernel(): ReviewKernel {
     });
   }
 
-  function resolveCaptureWaiters(actionId: string): void {
+  function resolveCaptureWaiters(
+    actionId: string,
+    action: NormalizedReviewAction,
+    entry: CapturedNetworkEntry
+  ): void {
     const pending: CaptureWaiter[] = [];
     for (const waiter of state.waiters) {
-      if (!waiter.actionId || waiter.actionId === actionId) {
+      const actionMatches = !waiter.actionId || waiter.actionId === actionId;
+      const accepted = !waiter.accept || waiter.accept(action, entry);
+      if (actionMatches && accepted) {
         window.clearTimeout(waiter.timer);
-        waiter.resolve();
+        waiter.resolve(actionId);
       } else {
         pending.push(waiter);
       }
@@ -162,15 +169,19 @@ export function createReviewKernel(): ReviewKernel {
     state.diffWaiters = pending;
   }
 
-  function waitForCapture(actionId: string, timeoutMs: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        state.waiters = state.waiters.filter((waiter) => waiter.timer !== timer);
-        reject(new Error('Timed out while refreshing latest review data.'));
-      }, timeoutMs);
+  function waitForCapture(
+    actionId: string,
+    timeoutMs: number,
+    accept?: (action: NormalizedReviewAction, entry: CapturedNetworkEntry) => boolean
+  ): Promise<string> {
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+    const timer = window.setTimeout(() => {
+      state.waiters = state.waiters.filter((waiter) => waiter.timer !== timer);
+      reject(new Error('Timed out while refreshing latest review data.'));
+    }, timeoutMs);
 
-      state.waiters.push({ actionId, resolve, reject, timer });
-    });
+    state.waiters.push({ actionId, accept, resolve, reject, timer });
+    return promise;
   }
 
   function getLiveReviewActionId(): string {
@@ -185,14 +196,14 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   function waitForDiff(actionId: string, timeoutMs: number): Promise<BabelDiffPayload> {
-    return new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        state.diffWaiters = state.diffWaiters.filter((waiter) => waiter.timer !== timer);
-        reject(new Error('Timed out while fetching Babel transcription diff.'));
-      }, timeoutMs);
+    const { promise, resolve, reject } = Promise.withResolvers<BabelDiffPayload>();
+    const timer = window.setTimeout(() => {
+      state.diffWaiters = state.diffWaiters.filter((waiter) => waiter.timer !== timer);
+      reject(new Error('Timed out while fetching Babel transcription diff.'));
+    }, timeoutMs);
 
-      state.diffWaiters.push({ actionId, resolve, reject, timer });
-    });
+    state.diffWaiters.push({ actionId, resolve, reject, timer });
+    return promise;
   }
 
   function handleCapturedEntry(entry: CapturedNetworkEntry): void {
@@ -218,7 +229,7 @@ export function createReviewKernel(): ReviewKernel {
         state.baselineHydratedFromStorage = false;
         schedulePersist();
       }
-      resolveCaptureWaiters(actionId);
+      resolveCaptureWaiters(actionId, normalized, entry);
       return;
     }
 
@@ -232,7 +243,7 @@ export function createReviewKernel(): ReviewKernel {
       state.original = normalized;
       state.baselineHydratedFromStorage = false;
       schedulePersist();
-      resolveCaptureWaiters(actionId);
+      resolveCaptureWaiters(actionId, normalized, entry);
       return;
     }
 
@@ -257,7 +268,7 @@ export function createReviewKernel(): ReviewKernel {
     }
 
     schedulePersist();
-    resolveCaptureWaiters(actionId);
+    resolveCaptureWaiters(actionId, normalized, entry);
   }
 
   async function refreshLatestCurrent(actionId: string): Promise<void> {
@@ -274,11 +285,13 @@ export function createReviewKernel(): ReviewKernel {
     }
 
     const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
-    const waiter = waitForCapture('', timeout);
+    const capturedActionId = waitForCapture(
+      '',
+      timeout,
+      (action) => Number(action.actionLevel) !== 1
+    );
     bridge.fetchCurrentReviewAction();
-    await waiter;
-
-    actionId = getLiveReviewActionId();
+    actionId = getLiveReviewActionId() || (await capturedActionId);
     if (!actionId) {
       throw new Error('Could not detect current reviewActionId from the Babel page context.');
     }
