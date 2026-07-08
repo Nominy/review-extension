@@ -1,4 +1,5 @@
 import {
+  COMMAND_FETCH_CURRENT_REVIEW_ACTION,
   COMMAND_FETCH_REVIEW_ACTION,
   COMMAND_FETCH_TRANSCRIPTION_DIFF,
   COMMAND_SOURCE,
@@ -253,6 +254,36 @@ function extractReviewActionIdFromResponseText(responseText: string): string {
   return '';
 }
 
+function extractReviewActionIdFromTrpcInputUrl(urlText: string): string {
+  try {
+    const url = new URL(urlText, window.location.href);
+    const input = url.searchParams.get('input');
+    if (!input) {
+      return '';
+    }
+    return findReviewActionIdByKeyDeep(parseMaybeJson(input));
+  } catch {
+    return '';
+  }
+}
+
+function findCurrentReviewActionIdFromPerformance(): string {
+  const entries = performance
+    .getEntriesByType('resource')
+    .map((entry) => entry.name || '')
+    .filter((url) => url.includes(REVIEW_ACTIONS_PROCEDURE));
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const reviewActionId = extractReviewActionIdFromTrpcInputUrl(entries[index]);
+    if (reviewActionId) {
+      return reviewActionId;
+    }
+  }
+
+  return '';
+}
+
+
 const originalFetch = window.fetch;
 
 async function maybeAutoFetchReviewActionData(
@@ -373,15 +404,11 @@ async function fetchTranscriptionDiffForReviewAction(args: {
   if (!reviewActionId) {
     throw new Error('Valid current reviewActionId is required.');
   }
-  if (!transcriptionChunkId) {
-    throw new Error('transcriptionChunkId is required.');
-  }
 
   const reviewActionsUrl = buildTrpcBatchGetUrl(REVIEW_ACTIONS_PROCEDURE, {
     0: {
       json: {
-        transcriptionChunkId,
-        excludeReviewActionId: reviewActionId
+        reviewActionId
       }
     }
   });
@@ -411,7 +438,7 @@ async function fetchTranscriptionDiffForReviewAction(args: {
   }) as Record<string, unknown> | undefined;
 
   if (!reference || typeof reference.id !== 'string') {
-    throw new Error('Could not find L1 review action for chunk.');
+    throw new Error('Could not find L1 review action for current L2 task.');
   }
 
   const diffUrl = buildTrpcBatchGetUrl(TRANSCRIPTION_DIFF_PROCEDURE, {
@@ -641,6 +668,14 @@ function handleCommand(event: MessageEvent): void {
 
   const data = event.data as CommandMessage | null;
   if (!data || data.source !== COMMAND_SOURCE) {
+    return;
+  }
+
+  if (data.type === COMMAND_FETCH_CURRENT_REVIEW_ACTION) {
+    const reviewActionId = findCurrentReviewActionIdFromPerformance();
+    if (reviewActionId) {
+      void maybeAutoFetchReviewActionData(reviewActionId, 'page-context', window.location.href, true);
+    }
     return;
   }
 

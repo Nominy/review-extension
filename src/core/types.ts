@@ -79,7 +79,7 @@ export interface StoredState {
 
 export interface DiffCommandPayload {
   reviewActionId: string;
-  transcriptionChunkId: string;
+  transcriptionChunkId?: string;
 }
 
 export interface BabelDiffPayload {

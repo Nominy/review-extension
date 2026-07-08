@@ -1,5 +1,6 @@
 import { createPageBridge } from '@nominy/babel-babel-runtime';
 import {
+  COMMAND_FETCH_CURRENT_REVIEW_ACTION,
   COMMAND_FETCH_REVIEW_ACTION,
   COMMAND_FETCH_TRANSCRIPTION_DIFF,
   COMMAND_SOURCE,
@@ -23,6 +24,9 @@ export function createPageBridgeService() {
   return {
     inject(): void {
       bridge.inject();
+    },
+    fetchCurrentReviewAction(): void {
+      bridge.post(COMMAND_FETCH_CURRENT_REVIEW_ACTION, {});
     },
     fetchReviewAction(reviewActionId: string): void {
       bridge.post(COMMAND_FETCH_REVIEW_ACTION, {
