@@ -385,6 +385,28 @@ test('Magic Review does not promote incidental L1 captures to the current review
   assert.equal(sessionCall.args.original.actionLevel, 1);
 });
 
+test('Magic Review re-discovers current L2 when runtime state already holds L1', async () => {
+  const { harness } = await loadKernelHarness({
+    href: 'https://dashboard.babel.audio/review',
+    storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') }
+  });
+  harness.bridge.emitCaptured(captured(STABLE_L1_ID, 1));
+  emitStableL2Flow(harness);
+
+  await harness.magicReview();
+
+  const commands = harness.commands.filter((command) => command.type !== 'inject');
+  assert.equal(commands[0].type, 'fetchCurrentReviewAction');
+  assert.equal(commands[1].type, 'fetchReviewAction');
+  assert.equal(commands[1].reviewActionId, CURRENT_L2_ID);
+
+  const sessionCall = harness.backendCalls.find((call) => call.type === 'createReviewSession');
+  assert.ok(sessionCall, 'interactive session creation should run');
+  assert.equal(sessionCall.args.reviewActionId, CURRENT_L2_ID);
+  assert.equal(sessionCall.args.current.actionId, CURRENT_L2_ID);
+  assert.equal(sessionCall.args.original.actionId, STABLE_L1_ID);
+});
+
 async function loadPageBridgeHarness({ resourceUrls = [] } = {}) {
   const result = await build({
     entryPoints: [path.join(rootDir, 'src/content/page-bridge.ts')],
