@@ -7,6 +7,7 @@ export const TARGET_NEEDLES = [
 export const EVENT_SOURCE = 'babel-review-helper';
 export const COMMAND_SOURCE = 'babel-review-overlay';
 export const COMMAND_FETCH_REVIEW_ACTION = 'fetch-review-action-data';
+export const COMMAND_FETCH_CURRENT_REVIEW_ACTION = 'fetch-current-review-action-data';
 export const COMMAND_FETCH_TRANSCRIPTION_DIFF = 'fetch-transcription-diff';
 export const EVENT_REVIEW_ACTION_CAPTURED = 'review-action-captured';
 export const EVENT_TRANSCRIPTION_DIFF_FETCHED = 'transcription-diff-fetched';

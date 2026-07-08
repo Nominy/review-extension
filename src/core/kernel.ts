@@ -39,12 +39,20 @@ interface DiffWaiter {
   reject: (error: Error) => void;
   timer: number;
 }
+type PendingBaselineFetch = {
+  currentActionId: string;
+  referenceActionId: string;
+};
+
+function isReviewActionId(value: string): boolean {
+  return /^[0-9a-f-]{36}$/i.test(value);
+}
 
 function getReviewActionIdFromUrl(): string {
   try {
     const url = new URL(window.location.href);
     const raw = url.searchParams.get('reviewActionId') || '';
-    return /^[0-9a-f-]{36}$/i.test(raw) ? raw : '';
+    return isReviewActionId(raw) ? raw : '';
   } catch {
     return '';
   }
@@ -76,7 +84,8 @@ export function createReviewKernel(): ReviewKernel {
     generating: false,
     settings: { ...DEFAULT_SETTINGS },
     waiters: [] as CaptureWaiter[],
-    diffWaiters: [] as DiffWaiter[]
+    diffWaiters: [] as DiffWaiter[],
+    pendingBaselineFetch: null as PendingBaselineFetch | null
   };
 
   let persistTimer = 0;
@@ -126,7 +135,7 @@ export function createReviewKernel(): ReviewKernel {
   function resolveCaptureWaiters(actionId: string): void {
     const pending: CaptureWaiter[] = [];
     for (const waiter of state.waiters) {
-      if (waiter.actionId === actionId) {
+      if (!waiter.actionId || waiter.actionId === actionId) {
         window.clearTimeout(waiter.timer);
         waiter.resolve();
       } else {
@@ -164,6 +173,14 @@ export function createReviewKernel(): ReviewKernel {
     });
   }
 
+  function getLiveReviewActionId(): string {
+    const urlActionId = getReviewActionIdFromUrl();
+    if (urlActionId) {
+      return urlActionId;
+    }
+    return state.baselineHydratedFromStorage ? '' : state.reviewActionId;
+  }
+
   function waitForDiff(actionId: string, timeoutMs: number): Promise<BabelDiffPayload> {
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -190,21 +207,37 @@ export function createReviewKernel(): ReviewKernel {
       return;
     }
 
+    const pendingBaseline = state.pendingBaselineFetch;
+    if (pendingBaseline?.referenceActionId === actionId) {
+      if (!state.reviewActionId || state.reviewActionId === pendingBaseline.currentActionId) {
+        state.reviewActionId = pendingBaseline.currentActionId;
+        state.original = normalized;
+        state.baselineHydratedFromStorage = false;
+        schedulePersist();
+      }
+      resolveCaptureWaiters(actionId);
+      return;
+    }
+
+    const stableOriginal = Number(normalized.actionLevel) === 1;
     if (state.reviewActionId && state.reviewActionId !== actionId) {
       state.reviewActionId = actionId;
-      state.original = normalized;
+      state.original = stableOriginal ? normalized : null;
       state.current = normalized;
       state.baselineHydratedFromStorage = false;
       state.lastTranscriptionDiff = null;
       updateActiveSession(null);
     } else {
       state.reviewActionId = actionId;
-      if (!state.original || state.baselineHydratedFromStorage) {
+      if (stableOriginal) {
         state.original = normalized;
         state.baselineHydratedFromStorage = false;
-        state.lastTranscriptionDiff = null;
+      } else if (!state.original || state.original.actionId === actionId) {
+        state.original = null;
+        state.baselineHydratedFromStorage = false;
       }
       state.current = normalized;
+      state.lastTranscriptionDiff = null;
     }
 
     schedulePersist();
@@ -218,15 +251,22 @@ export function createReviewKernel(): ReviewKernel {
     await waiter;
   }
 
-  function getCurrentTranscriptionChunkId(): string {
-    const current = state.current || state.original;
-    const recordings = current?.recordings || [];
-    for (const recording of recordings) {
-      if (recording.transcriptionChunkId) {
-        return recording.transcriptionChunkId;
-      }
+  async function ensureCurrentReviewActionId(): Promise<string> {
+    let actionId = getLiveReviewActionId();
+    if (actionId) {
+      return actionId;
     }
-    return '';
+
+    const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
+    const waiter = waitForCapture('', timeout);
+    bridge.fetchCurrentReviewAction();
+    await waiter;
+
+    actionId = getLiveReviewActionId();
+    if (!actionId) {
+      throw new Error('Could not detect current reviewActionId from the Babel page context.');
+    }
+    return actionId;
   }
 
   async function ensureLatestTranscriptionDiff(actionId: string): Promise<BabelDiffPayload> {
@@ -235,15 +275,46 @@ export function createReviewKernel(): ReviewKernel {
       return existing;
     }
 
-    const transcriptionChunkId = getCurrentTranscriptionChunkId();
-    if (!transcriptionChunkId) {
-      throw new Error('Could not detect transcriptionChunkId from captured review action data.');
+    const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
+    const waiter = waitForDiff(actionId, timeout);
+    bridge.fetchTranscriptionDiff({ reviewActionId: actionId });
+    return waiter;
+  }
+
+  async function refreshStableOriginal(actionId: string): Promise<void> {
+    if (state.current?.actionId === actionId && Number(state.current.actionLevel) === 1) {
+      state.original = state.current;
+      state.baselineHydratedFromStorage = false;
+      schedulePersist();
+      return;
+    }
+
+    const diff = await ensureLatestTranscriptionDiff(actionId);
+    const referenceActionId = typeof diff.referenceReviewActionId === 'string' ? diff.referenceReviewActionId : '';
+    if (!isReviewActionId(referenceActionId) || referenceActionId === actionId) {
+      throw new Error('Could not detect stable original review action for this transcription.');
+    }
+
+    if (state.original?.actionId === referenceActionId) {
+      state.baselineHydratedFromStorage = false;
+      return;
     }
 
     const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
-    const waiter = waitForDiff(actionId, timeout);
-    bridge.fetchTranscriptionDiff({ reviewActionId: actionId, transcriptionChunkId });
-    return waiter;
+    state.pendingBaselineFetch = { currentActionId: actionId, referenceActionId };
+    const waiter = waitForCapture(referenceActionId, timeout);
+    bridge.fetchReviewAction(referenceActionId);
+    try {
+      await waiter;
+    } finally {
+      if (state.pendingBaselineFetch?.referenceActionId === referenceActionId) {
+        state.pendingBaselineFetch = null;
+      }
+    }
+
+    if (state.original?.actionId !== referenceActionId) {
+      throw new Error('Stable original review action was fetched but could not be normalized.');
+    }
   }
 
   async function submitAnalytics(entry: CapturedNetworkEntry): Promise<void> {
@@ -508,7 +579,7 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   function requireActionId(): string {
-    const actionId = state.reviewActionId || getReviewActionIdFromUrl();
+    const actionId = getLiveReviewActionId();
     if (!actionId) {
       throw new Error('Could not detect reviewActionId.');
     }
@@ -665,17 +736,15 @@ export function createReviewKernel(): ReviewKernel {
       return;
     }
 
-    const actionId = state.reviewActionId || getReviewActionIdFromUrl();
-    if (!actionId) {
-      form.pushToast('Could not detect reviewActionId.', true);
-      return;
-    }
-
     state.generating = true;
-    form.setState('loading', state.settings.workflowMode === 'interactive' ? 'Opening...' : 'Generating...');
+    form.setState('loading', 'Finding task...');
 
     try {
+      const actionId = await ensureCurrentReviewActionId();
+      form.setState('loading', state.settings.workflowMode === 'interactive' ? 'Opening...' : 'Generating...');
+
       await refreshLatestCurrent(actionId);
+      await refreshStableOriginal(actionId);
 
       requireBaseline();
 
