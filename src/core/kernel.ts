@@ -108,29 +108,27 @@ export function createReviewKernel(): ReviewKernel {
     window.clearTimeout(persistTimer);
     persistTimer = window.setTimeout(() => {
       persistTimer = 0;
-      void persistBaseline();
+      void persistSettings();
     }, 220);
   }
 
-  async function persistBaseline(): Promise<void> {
-    if (!state.reviewActionId || !state.original) {
-      return;
-    }
-
-    const current = state.current || state.original;
+  async function persistSettings(): Promise<void> {
     await saveState({
-      sessions: {
-        [state.reviewActionId]: {
-          reviewActionId: state.reviewActionId,
-          original: state.original,
-          current,
-          originalCapturedAt: state.original.capturedAt,
-          currentCapturedAt: current.capturedAt
-        }
-      },
+      sessions: {},
       settings: state.settings,
-      selectedSessionId: state.reviewActionId
+      selectedSessionId: ''
     });
+  }
+
+  function resetReviewSnapshot(): void {
+    state.reviewActionId = '';
+    state.original = null;
+    state.current = null;
+    state.baselineHydratedFromStorage = false;
+    state.lastAiReview = null;
+    state.lastTranscriptionDiff = null;
+    state.pendingBaselineFetch = null;
+    updateActiveSession(null);
   }
 
   function resolveCaptureWaiters(
@@ -299,11 +297,6 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   async function ensureLatestTranscriptionDiff(actionId: string): Promise<BabelDiffPayload> {
-    const existing = state.lastTranscriptionDiff;
-    if (existing?.ok && existing.currentReviewActionId === actionId) {
-      return existing;
-    }
-
     const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
     const waiter = waitForDiff(actionId, timeout);
     bridge.fetchTranscriptionDiff({ reviewActionId: actionId });
@@ -324,10 +317,6 @@ export function createReviewKernel(): ReviewKernel {
       throw new Error('Could not detect stable original review action for this transcription.');
     }
 
-    if (state.original?.actionId === referenceActionId) {
-      state.baselineHydratedFromStorage = false;
-      return;
-    }
 
     const timeout = Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs);
     state.pendingBaselineFetch = { currentActionId: actionId, referenceActionId };
@@ -769,6 +758,7 @@ export function createReviewKernel(): ReviewKernel {
     form.setState('loading', 'Finding task...');
 
     try {
+      resetReviewSnapshot();
       const actionId = await ensureCurrentReviewActionId();
       form.setState('loading', state.settings.workflowMode === 'interactive' ? 'Opening...' : 'Generating...');
 
@@ -875,19 +865,7 @@ export function createReviewKernel(): ReviewKernel {
       try {
         const stored = await loadState();
         state.settings = sanitizeSettings(stored.settings);
-        const ids = Object.keys(stored.sessions || {});
-        if (ids.length) {
-          const pick =
-            (stored.selectedSessionId && stored.sessions[stored.selectedSessionId] && stored.selectedSessionId) ||
-            ids[0];
-          const session = stored.sessions[pick];
-          if (session) {
-            state.reviewActionId = session.reviewActionId || pick;
-            state.original = session.original || null;
-            state.current = session.current || session.original || null;
-            state.baselineHydratedFromStorage = !!session.original;
-          }
-        }
+        void persistSettings();
       } catch {
         // Ignore storage failures; runtime capture will rebuild state.
       }

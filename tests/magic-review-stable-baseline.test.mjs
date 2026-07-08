@@ -8,6 +8,7 @@ import { build } from 'esbuild';
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
 
 const CURRENT_L2_ID = '22222222-2222-4222-8222-222222222222';
+const SECOND_CURRENT_L2_ID = '55555555-5555-4555-8555-555555555555';
 const STABLE_L1_ID = '11111111-1111-4111-8111-111111111111';
 const UNREVIEWED_L0_ID = '00000000-0000-4000-8000-000000000000';
 const STORED_STALE_ID = '33333333-3333-4333-8333-333333333333';
@@ -295,6 +296,109 @@ test('Magic Review discovers current L2 without a URL reviewActionId and ignores
   assert.equal(harness.backendCalls[0].args.reviewActionId, CURRENT_L2_ID);
   assert.equal(harness.backendCalls[0].args.current.actionId, CURRENT_L2_ID);
   assert.equal(harness.backendCalls[0].args.original.actionId, STABLE_L1_ID);
+});
+
+test('Magic Review recomputes live current review state on every click in one runtime', async () => {
+  const { harness } = await loadKernelHarness({
+    href: 'https://dashboard.babel.audio/review',
+    storedState: {
+      sessions: { [STORED_STALE_ID]: storedSession(STORED_STALE_ID, 2) },
+      selectedSessionId: STORED_STALE_ID,
+      settings: baseSettings('fast')
+    }
+  });
+  const currentChunks = new Map([
+    [CURRENT_L2_ID, 'chunk-first'],
+    [SECOND_CURRENT_L2_ID, 'chunk-second']
+  ]);
+  const liveCurrentIds = [CURRENT_L2_ID, SECOND_CURRENT_L2_ID];
+  let liveLookupCount = 0;
+
+  harness.onFetchCurrentReviewAction = (bridge) => {
+    const currentId = liveCurrentIds[liveLookupCount] || liveCurrentIds.at(-1);
+    liveLookupCount += 1;
+    bridge.emitCaptured(captured(currentId, 2, currentChunks.get(currentId)));
+  };
+  harness.onFetchReviewAction = (reviewActionId, bridge) => {
+    if (currentChunks.has(reviewActionId)) {
+      bridge.emitCaptured(captured(reviewActionId, 2, currentChunks.get(reviewActionId)));
+      return;
+    }
+    if (reviewActionId === STABLE_L1_ID) {
+      bridge.emitCaptured(captured(STABLE_L1_ID, 1));
+      return;
+    }
+    bridge.emitCaptured(captured(reviewActionId, 0));
+  };
+  harness.onFetchTranscriptionDiff = (payload, bridge) => {
+    assert.ok(currentChunks.has(payload.reviewActionId), 'diff should be fetched for the live current review action');
+    bridge.emitDiff({
+      ok: true,
+      currentReviewActionId: payload.reviewActionId,
+      referenceReviewActionId: STABLE_L1_ID,
+      transcriptionChunkId: currentChunks.get(payload.reviewActionId),
+      capturedAt: '2026-07-08T00:00:03.000Z'
+    });
+  };
+
+  await harness.magicReview();
+  await harness.magicReview();
+
+  const commands = harness.commands.filter((command) => command.type !== 'inject');
+  assert.deepEqual(
+    commands.map((command) => command.type),
+    [
+      'fetchCurrentReviewAction',
+      'fetchReviewAction',
+      'fetchTranscriptionDiff',
+      'fetchReviewAction',
+      'fetchCurrentReviewAction',
+      'fetchReviewAction',
+      'fetchTranscriptionDiff',
+      'fetchReviewAction'
+    ]
+  );
+  assert.deepEqual(
+    commands
+      .filter((command) => command.type === 'fetchReviewAction')
+      .map((command) => command.reviewActionId),
+    [CURRENT_L2_ID, STABLE_L1_ID, SECOND_CURRENT_L2_ID, STABLE_L1_ID]
+  );
+  assert.deepEqual(
+    commands
+      .filter((command) => command.type === 'fetchTranscriptionDiff')
+      .map((command) => command.payload.reviewActionId),
+    [CURRENT_L2_ID, SECOND_CURRENT_L2_ID]
+  );
+  assert.equal(
+    commands.some((command) => command.reviewActionId === STORED_STALE_ID || command.payload?.reviewActionId === STORED_STALE_ID),
+    false
+  );
+  assert.equal(liveLookupCount, 2);
+
+  const generateCalls = harness.backendCalls.filter((call) => call.type === 'generate');
+  assert.equal(generateCalls.length, 2);
+  assert.deepEqual(
+    generateCalls.map((call) => call.args.reviewActionId),
+    [CURRENT_L2_ID, SECOND_CURRENT_L2_ID]
+  );
+  assert.deepEqual(
+    generateCalls.map((call) => call.args.current.actionId),
+    [CURRENT_L2_ID, SECOND_CURRENT_L2_ID]
+  );
+  assert.deepEqual(
+    generateCalls.map((call) => call.args.original.actionId),
+    [STABLE_L1_ID, STABLE_L1_ID]
+  );
+  assert.equal(
+    generateCalls.some(
+      (call) =>
+        call.args.reviewActionId === STORED_STALE_ID ||
+        call.args.current.actionId === STORED_STALE_ID ||
+        call.args.original.actionId === STORED_STALE_ID
+    ),
+    false
+  );
 });
 
 test('fast Magic Review refreshes the stable L1 original before backend generation', async () => {
