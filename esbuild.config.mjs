@@ -49,6 +49,18 @@ function prepareBuildDirectory() {
   writeManifest();
 }
 
+function syncRootUnpackedDist() {
+  if (buildConfig.flavor !== 'dev' || watch) {
+    return;
+  }
+
+  const rootDistDir = resolve(ROOT, 'dist');
+  rmSync(rootDistDir, { recursive: true, force: true });
+  cpSync(distDir, rootDistDir, { recursive: true });
+  console.log('Synced dev dist into root dist for local unpacked loading');
+}
+
+
 const config = defineExtensionBuild({
   watch,
   sharedOptions: {
@@ -91,6 +103,7 @@ const config = defineExtensionBuild({
     if (!existsSync(resolve(buildDir, 'manifest.json'))) {
       throw new Error(`Missing generated manifest for ${buildConfig.flavor} build.`);
     }
+    syncRootUnpackedDist();
     console.log(`Built ${buildConfig.flavor} extension into ${buildDir}`);
     console.log(`Top-level outputs: ${createdFiles.join(', ')}`);
   },

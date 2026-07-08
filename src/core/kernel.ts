@@ -178,7 +178,10 @@ export function createReviewKernel(): ReviewKernel {
     if (urlActionId) {
       return urlActionId;
     }
-    return state.baselineHydratedFromStorage ? '' : state.reviewActionId;
+    if (state.baselineHydratedFromStorage || Number(state.current?.actionLevel) === 1) {
+      return '';
+    }
+    return state.reviewActionId;
   }
 
   function waitForDiff(actionId: string, timeoutMs: number): Promise<BabelDiffPayload> {
