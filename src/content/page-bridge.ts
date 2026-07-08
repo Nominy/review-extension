@@ -32,6 +32,12 @@ interface HelperMeta {
   requestBody: string;
 }
 
+interface ReviewActionIdCandidate {
+  reviewActionId: string;
+  level: number | null;
+  source: string;
+}
+
 interface BabelHelperXmlHttpRequest extends XMLHttpRequest {
   __babelHelper?: HelperMeta;
 }
@@ -267,6 +273,193 @@ function extractReviewActionIdFromTrpcInputUrl(urlText: string): string {
   }
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function candidateFromRecord(record: Record<string, unknown>, source: string): ReviewActionIdCandidate | null {
+  const reviewActionId = normalizeReviewActionId(record.reviewActionId) || normalizeReviewActionId(record.actionId);
+  if (!reviewActionId) {
+    return null;
+  }
+
+  const level =
+    toFiniteNumber(record.reviewActionLevel) ?? toFiniteNumber(record.actionLevel) ?? toFiniteNumber(record.level);
+  return { reviewActionId, level, source };
+}
+
+function preferCandidate(
+  current: ReviewActionIdCandidate | null,
+  candidate: ReviewActionIdCandidate | null
+): ReviewActionIdCandidate | null {
+  if (!candidate) {
+    return current;
+  }
+  if (!current) {
+    return candidate;
+  }
+  if ((candidate.level ?? 0) > (current.level ?? 0)) {
+    return candidate;
+  }
+  return current;
+}
+
+function findReviewActionCandidateDeep(
+  node: unknown,
+  source: string,
+  seen: WeakSet<object>,
+  depth: number
+): ReviewActionIdCandidate | null {
+  if (!node || depth > 8) {
+    return null;
+  }
+  if (typeof node !== 'object' && typeof node !== 'function') {
+    return null;
+  }
+  if ((typeof Node !== 'undefined' && node instanceof Node) || seen.has(node)) {
+    return null;
+  }
+
+  seen.add(node);
+  if (Array.isArray(node)) {
+    let best: ReviewActionIdCandidate | null = null;
+    for (let index = 0; index < Math.min(node.length, 50); index += 1) {
+      best = preferCandidate(best, findReviewActionCandidateDeep(node[index], source, seen, depth + 1));
+      if ((best?.level ?? 0) >= 2) {
+        return best;
+      }
+    }
+    return best;
+  }
+
+  const record = node as Record<string, unknown>;
+  const direct = candidateFromRecord(record, source);
+  if ((direct?.level ?? 0) >= 2) {
+    return direct;
+  }
+
+  let best = direct;
+  for (const key of Object.keys(record).slice(0, 80)) {
+    if (
+      key === 'return' ||
+      key === 'child' ||
+      key === 'sibling' ||
+      key === 'alternate' ||
+      key === 'stateNode' ||
+      key === '_debugOwner'
+    ) {
+      continue;
+    }
+    best = preferCandidate(best, findReviewActionCandidateDeep(record[key], source, seen, depth + 1));
+    if ((best?.level ?? 0) >= 2) {
+      return best;
+    }
+  }
+
+  return best;
+}
+
+function findReviewActionCandidateInReactValue(value: unknown, source: string): ReviewActionIdCandidate | null {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const roots = [
+    record.pendingProps,
+    (record.pendingProps as Record<string, unknown> | undefined)?.children,
+    ((record.pendingProps as Record<string, unknown> | undefined)?.children as Record<string, unknown> | undefined)?.props,
+    record.memoizedProps,
+    (record.memoizedProps as Record<string, unknown> | undefined)?.children,
+    ((record.memoizedProps as Record<string, unknown> | undefined)?.children as Record<string, unknown> | undefined)?.props,
+    record.props,
+    value
+  ];
+
+  let best: ReviewActionIdCandidate | null = null;
+  const seen = new WeakSet<object>();
+  for (const root of roots) {
+    best = preferCandidate(best, findReviewActionCandidateDeep(root, source, seen, 0));
+    if ((best?.level ?? 0) >= 2) {
+      return best;
+    }
+  }
+
+  return best;
+}
+
+function findCurrentReviewActionIdFromReactInternals(): string {
+  let best: ReviewActionIdCandidate | null = null;
+  const elements =
+    typeof document.querySelectorAll === 'function' ? Array.from(document.querySelectorAll('*')) : [];
+
+  for (const element of elements) {
+    for (const key of Object.keys(element)) {
+      if (!key.startsWith('__reactFiber$') && !key.startsWith('__reactProps$')) {
+        continue;
+      }
+      best = preferCandidate(
+        best,
+        findReviewActionCandidateInReactValue((element as unknown as Record<string, unknown>)[key], 'react')
+      );
+      if (best && (best.level ?? 0) >= 2) {
+        return best.reviewActionId;
+      }
+    }
+  }
+
+  return best?.reviewActionId || '';
+}
+
+
+function findCurrentReviewActionIdFromVisibleText(): string {
+  const candidates = [window.getSelection?.()?.toString() || '', document.body?.innerText || ''];
+  const labeledIdRegex =
+    /\b(?:ID|Review(?:\s+Action)?\s+ID|Support\s+ID)\s*:?\s*([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i;
+
+  for (const candidate of candidates) {
+    const reviewActionId = normalizeReviewActionId(candidate.match(labeledIdRegex)?.[1]);
+    if (reviewActionId) {
+      return reviewActionId;
+    }
+  }
+
+  return '';
+}
+
+function findCurrentReviewActionIdFromNextPayload(): string {
+  const reviewIdRegex =
+    /reviewActionId(?:\\{0,3}")?\s*(?:\\{0,3}:|:)\s*\\{0,3}"([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
+  const levelTwoRegex = /(?:reviewActionLevel|actionLevel|level)(?:\\{0,3}")?\s*(?:\\{0,3}:|:)\s*2\b/i;
+  let fallback = '';
+
+  for (const script of Array.from(document.scripts)) {
+    const text = script.textContent || '';
+    for (const match of text.matchAll(reviewIdRegex)) {
+      const reviewActionId = normalizeReviewActionId(match[1]);
+      if (!reviewActionId) {
+        continue;
+      }
+      if (!fallback) {
+        fallback = reviewActionId;
+      }
+      const context = text.slice(Math.max(0, match.index - 500), match.index + 500);
+      if (levelTwoRegex.test(context)) {
+        return reviewActionId;
+      }
+    }
+  }
+
+  return fallback;
+}
+
 function findCurrentReviewActionIdFromPerformance(): string {
   const entries = performance
     .getEntriesByType('resource')
@@ -281,6 +474,24 @@ function findCurrentReviewActionIdFromPerformance(): string {
   }
 
   return '';
+}
+
+function findCurrentReviewActionIdFromPageContext(): { reviewActionId: string; source: string } {
+  const sources: Array<[string, () => string]> = [
+    ['react-page-context', findCurrentReviewActionIdFromReactInternals],
+    ['visible-support-id', findCurrentReviewActionIdFromVisibleText],
+    ['performance', findCurrentReviewActionIdFromPerformance],
+    ['next-page-payload', findCurrentReviewActionIdFromNextPayload]
+  ];
+
+  for (const [source, find] of sources) {
+    const reviewActionId = find();
+    if (reviewActionId) {
+      return { reviewActionId, source };
+    }
+  }
+
+  return { reviewActionId: '', source: '' };
 }
 
 
@@ -672,7 +883,7 @@ function handleCommand(event: MessageEvent): void {
   }
 
   if (data.type === COMMAND_FETCH_CURRENT_REVIEW_ACTION) {
-    const reviewActionId = findCurrentReviewActionIdFromPerformance();
+    const { reviewActionId } = findCurrentReviewActionIdFromPageContext();
     if (reviewActionId) {
       void maybeAutoFetchReviewActionData(reviewActionId, 'page-context', window.location.href, true);
     }
