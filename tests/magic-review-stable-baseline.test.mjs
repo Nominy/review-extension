@@ -342,6 +342,49 @@ test('interactive Magic Review sends L1-as-original and never promotes a non-L1 
   assert.equal(harness.toasts.some((toast) => toast.isError), false);
 });
 
+test('Magic Review does not promote incidental L1 captures to the current review', async () => {
+  const { harness } = await loadKernelHarness({
+    href: 'https://dashboard.babel.audio/review',
+    storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') }
+  });
+
+  harness.onFetchCurrentReviewAction = (bridge) => {
+    bridge.emitCaptured(captured(CURRENT_L2_ID, 2));
+  };
+  harness.onFetchReviewAction = (reviewActionId, bridge) => {
+    if (reviewActionId === CURRENT_L2_ID) {
+      bridge.emitCaptured(captured(CURRENT_L2_ID, 2));
+      bridge.emitCaptured(captured(STABLE_L1_ID, 1));
+      return;
+    }
+    if (reviewActionId === STABLE_L1_ID) {
+      bridge.emitCaptured(captured(STABLE_L1_ID, 1));
+      return;
+    }
+    bridge.emitCaptured(captured(reviewActionId, 0));
+  };
+  harness.onFetchTranscriptionDiff = (payload, bridge) => {
+    assert.equal(payload.reviewActionId, CURRENT_L2_ID);
+    bridge.emitDiff({
+      ok: true,
+      currentReviewActionId: CURRENT_L2_ID,
+      referenceReviewActionId: STABLE_L1_ID,
+      transcriptionChunkId: 'chunk-1',
+      capturedAt: '2026-07-08T00:00:03.000Z'
+    });
+  };
+
+  await harness.magicReview();
+
+  const sessionCall = harness.backendCalls.find((call) => call.type === 'createReviewSession');
+  assert.ok(sessionCall, 'interactive session creation should run');
+  assert.equal(sessionCall.args.reviewActionId, CURRENT_L2_ID);
+  assert.equal(sessionCall.args.current.actionId, CURRENT_L2_ID);
+  assert.equal(sessionCall.args.current.actionLevel, 2);
+  assert.equal(sessionCall.args.original.actionId, STABLE_L1_ID);
+  assert.equal(sessionCall.args.original.actionLevel, 1);
+});
+
 async function loadPageBridgeHarness({ resourceUrls = [] } = {}) {
   const result = await build({
     entryPoints: [path.join(rootDir, 'src/content/page-bridge.ts')],

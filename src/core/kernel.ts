@@ -220,6 +220,19 @@ export function createReviewKernel(): ReviewKernel {
     }
 
     const stableOriginal = Number(normalized.actionLevel) === 1;
+    if (
+      stableOriginal &&
+      state.current &&
+      state.current.actionId !== actionId &&
+      Number(state.current.actionLevel) !== 1
+    ) {
+      state.original = normalized;
+      state.baselineHydratedFromStorage = false;
+      schedulePersist();
+      resolveCaptureWaiters(actionId);
+      return;
+    }
+
     if (state.reviewActionId && state.reviewActionId !== actionId) {
       state.reviewActionId = actionId;
       state.original = stableOriginal ? normalized : null;
