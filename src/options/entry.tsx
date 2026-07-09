@@ -162,7 +162,7 @@ function OptionsApp() {
               </div>
               <div className="br-block">
                 <div className="br-helper">
-                  These Babel tools are maintained by Naftsan. If they save you time,{' '}
+                  These Babel tools are maintained by Naftsan;{' '}
                   <a
                     className="br-button"
                     data-size="sm"
@@ -171,7 +171,7 @@ function OptionsApp() {
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    Support on Ko-fi
+                    if this extension saves you time, consider supporting development on Ko-Fi
                   </a>
                 </div>
               </div>
