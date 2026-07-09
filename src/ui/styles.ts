@@ -89,7 +89,7 @@ const STYLE_TEXT = `
     font-size: 11px;
     font-weight: 700;
     text-decoration: none;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   .br-support-link:hover {

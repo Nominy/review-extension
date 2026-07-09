@@ -56,7 +56,7 @@ test('options page includes passive Ko-fi support link without new host permissi
   const hostPermissions = manifest.host_permissions || [];
 
   assert.match(source, /https:\/\/ko-fi\.com\/naftsan/);
-  assert.match(source, /Support on Ko-fi/);
+  assert.match(source, /if this extension saves you time, consider supporting development on Ko-Fi/);
   assert.equal(hostPermissions.some((permission) => /ko-fi\.com/.test(permission)), false);
 });
 
@@ -66,7 +66,7 @@ test('review workspace surface includes a small Ko-fi link beside the header', (
 
   assert.match(workspaceSource, /br-header-title/);
   assert.match(workspaceSource, /https:\/\/ko-fi\.com\/naftsan/);
-  assert.match(workspaceSource, /Support on Ko-fi/);
+  assert.match(workspaceSource, /if this extension saves you time, consider supporting development on Ko-Fi/);
   assert.match(workspaceSource, /br-support-link/);
   assert.match(stylesSource, /\.br-support-link/);
 });

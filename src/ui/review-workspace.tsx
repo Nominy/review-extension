@@ -414,7 +414,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                   rel="noopener noreferrer"
                   target="_blank"
                 >
-                  Support on Ko-fi
+                  if this extension saves you time, consider supporting development on Ko-Fi
                 </a>
               </div>
               <div className="br-header-status" data-error={error}>
