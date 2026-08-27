@@ -131,6 +131,7 @@ function mockPlugin() {
          harness.bridge = bridge;
          return {
            inject() { harness.commands.push({ type: 'inject' }); },
+           prefillReviewerRatings() { harness.prefillCalls += 1; },
            fetchCurrentReviewAction() {
              harness.commands.push({ type: 'fetchCurrentReviewAction' });
              if (harness.onFetchCurrentReviewAction) harness.onFetchCurrentReviewAction(bridge);
@@ -218,6 +219,7 @@ async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?
     storedState,
     savedStates: [],
     commands: [],
+    prefillCalls: 0,
     backendCalls: [],
     formStates: [],
     toasts: [],
@@ -237,6 +239,7 @@ async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?
   vm.runInContext(result.outputFiles[0].text, context, { filename: 'kernel-test-bundle.js' });
   const kernel = context.KernelBundle.createReviewKernel();
   await kernel.start();
+  assert.equal(harness.prefillCalls, 1, 'kernel should request one initial reviewer-ratings prefill');
   assert.equal(typeof harness.magicReview, 'function', 'kernel should register Magic Review callback');
   return { harness, kernel, context };
 }
