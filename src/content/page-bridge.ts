@@ -2,6 +2,7 @@ import {
   COMMAND_FETCH_CURRENT_REVIEW_ACTION,
   COMMAND_FETCH_REVIEW_ACTION,
   COMMAND_FETCH_TRANSCRIPTION_DIFF,
+  COMMAND_PREFILL_REVIEWER_RATINGS,
   COMMAND_SOURCE,
   EVENT_REVIEW_ACTION_CAPTURED,
   EVENT_SOURCE,
@@ -40,6 +41,40 @@ interface ReviewActionIdCandidate {
 
 interface BabelHelperXmlHttpRequest extends XMLHttpRequest {
   __babelHelper?: HelperMeta;
+}
+
+interface ReactHookQueue {
+  dispatch?: unknown;
+  lastRenderedReducer?: unknown;
+  lastRenderedState?: unknown;
+}
+
+interface ReactHook {
+  memoizedState?: unknown;
+  queue?: ReactHookQueue | null;
+}
+
+interface ReactFiber {
+  alternate?: ReactFiber | null;
+  memoizedProps?: unknown;
+  memoizedState?: ReactHook | null;
+  return?: ReactFiber | null;
+  stateNode?: unknown;
+  tag?: number;
+}
+
+interface FeedbackOwnerResolution {
+  fiber: ReactFiber;
+  hook: ReactHook;
+  initialFeedback: unknown;
+  queue: ReactHookQueue;
+  reviewActionId: string;
+  state: Record<string, unknown>;
+}
+
+interface FeedbackStabilityMarker {
+  initialFeedback: unknown;
+  reviewActionId: string;
 }
 
 function parseTargetNeedles(raw: string): string[] {
@@ -872,6 +907,297 @@ XMLHttpRequest.prototype.send = function patchedSend(
   return originalSend.apply(this, [body] as Parameters<typeof originalSend>);
 };
 
+let reviewerRatingPrefillPending = false;
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function isRatingState(value: unknown): value is Record<string, unknown> {
+  const state = asObjectRecord(value);
+  if (!state || !hasOwn(state, 'otherFeedback') || typeof state.otherFeedback !== 'string') {
+    return false;
+  }
+
+  let ratingEntryCount = 0;
+  for (const [key, entry] of Object.entries(state)) {
+    if (key === 'otherFeedback') {
+      continue;
+    }
+
+    const ratingEntry = asObjectRecord(entry);
+    if (
+      !ratingEntry ||
+      !hasOwn(ratingEntry, 'rating') ||
+      !hasOwn(ratingEntry, 'comment') ||
+      (ratingEntry.rating !== null &&
+        (typeof ratingEntry.rating !== 'number' || !Number.isFinite(ratingEntry.rating))) ||
+      typeof ratingEntry.comment !== 'string'
+    ) {
+      return false;
+    }
+    ratingEntryCount += 1;
+  }
+
+  return ratingEntryCount > 1;
+}
+
+function hasNullRating(state: Record<string, unknown>): boolean {
+  return Object.values(state).some((entry) => {
+    const ratingEntry = asObjectRecord(entry);
+    return Boolean(ratingEntry && ratingEntry.rating === null);
+  });
+}
+
+function ascendToHostRoot(fiber: ReactFiber): ReactFiber | null {
+  const seen = new Set<ReactFiber>();
+  let root = fiber;
+
+  while (true) {
+    if (seen.has(root)) {
+      return null;
+    }
+    seen.add(root);
+
+    const parent = root.return;
+    if (!parent) {
+      break;
+    }
+    root = parent;
+  }
+
+  return root.tag === 3 ? root : null;
+}
+
+function isCurrentFiberBranch(fiber: ReactFiber): boolean {
+  const hostRoot = ascendToHostRoot(fiber);
+  const fiberRoot = hostRoot ? asObjectRecord(hostRoot.stateNode) : null;
+  return Boolean(fiberRoot && fiberRoot.current === hostRoot);
+}
+
+function resolveCommittedFiber(fiber: ReactFiber): ReactFiber | null {
+  if (isCurrentFiberBranch(fiber)) {
+    return fiber;
+  }
+
+  const alternate = fiber.alternate;
+  return alternate &&
+    alternate !== fiber &&
+    typeof alternate === 'object' &&
+    isCurrentFiberBranch(alternate)
+    ? alternate
+    : null;
+}
+
+function hasReviewerLevelAncestor(owner: ReactFiber): boolean {
+  const seen = new Set<ReactFiber>();
+  let ancestor = owner.return ?? null;
+
+  while (ancestor && !seen.has(ancestor)) {
+    seen.add(ancestor);
+    const props = asObjectRecord(ancestor.memoizedProps);
+    if (
+      props &&
+      typeof props.reviewActionLevel === 'number' &&
+      Number.isFinite(props.reviewActionLevel) &&
+      props.reviewActionLevel > 1
+    ) {
+      return true;
+    }
+    ancestor = ancestor.return ?? null;
+  }
+
+  return false;
+}
+
+function resolveFeedbackOwnerFiber(fiber: ReactFiber): FeedbackOwnerResolution | null {
+  const props = asObjectRecord(fiber.memoizedProps);
+  if (
+    !props ||
+    !hasOwn(props, 'reviewActionId') ||
+    typeof props.reviewActionId !== 'string' ||
+    props.reviewActionId.length === 0 ||
+    !hasOwn(props, 'initialFeedback') ||
+    props.readOnly !== false ||
+    props.isOpen !== true ||
+    props.isLoading !== false ||
+    !hasReviewerLevelAncestor(fiber)
+  ) {
+    return null;
+  }
+
+  const hook = fiber.memoizedState;
+  const state = hook?.memoizedState;
+  const queue = hook?.queue;
+  const queueRecord = queue as unknown as Record<string, unknown> | null | undefined;
+  const hasInvalidLastRenderedState = Boolean(
+    queueRecord &&
+      hasOwn(queueRecord, 'lastRenderedState') &&
+      !isRatingState(queueRecord.lastRenderedState)
+  );
+  if (
+    !hook ||
+    !queue ||
+    !isRatingState(state) ||
+    hasInvalidLastRenderedState ||
+    typeof queue.lastRenderedReducer !== 'function' ||
+    typeof queue.dispatch !== 'function'
+  ) {
+    return null;
+  }
+
+  return {
+    fiber,
+    hook,
+    initialFeedback: props.initialFeedback,
+    queue,
+    reviewActionId: props.reviewActionId,
+    state
+  };
+}
+
+function sameFeedbackOwner(
+  left: FeedbackOwnerResolution,
+  right: FeedbackOwnerResolution
+): boolean {
+  return (
+    (left.fiber === right.fiber || left.queue === right.queue) &&
+    left.reviewActionId === right.reviewActionId &&
+    left.initialFeedback === right.initialFeedback
+  );
+}
+
+function collectFeedbackOwnersFromFiber(
+  start: ReactFiber,
+  owners: FeedbackOwnerResolution[]
+): void {
+  const seen = new Set<ReactFiber>();
+  let fiber: ReactFiber | null = start;
+
+  while (fiber && !seen.has(fiber)) {
+    seen.add(fiber);
+    const owner = resolveFeedbackOwnerFiber(fiber);
+    if (owner && !owners.some((existing) => sameFeedbackOwner(existing, owner))) {
+      owners.push(owner);
+    }
+    fiber = fiber.return ?? null;
+  }
+}
+
+function resolveFeedbackOwner(): FeedbackOwnerResolution | null {
+  const owners: FeedbackOwnerResolution[] = [];
+  const anchors = document.querySelectorAll('[role="radio"][value="1"]');
+
+  for (const anchor of Array.from(anchors)) {
+    for (const key of Object.keys(anchor)) {
+      if (!key.startsWith('__reactFiber$')) {
+        continue;
+      }
+
+      const fiber = (anchor as unknown as Record<string, unknown>)[key] as ReactFiber | undefined;
+      if (!fiber || typeof fiber !== 'object') {
+        continue;
+      }
+
+      const committedFiber = resolveCommittedFiber(fiber);
+      if (!committedFiber) {
+        continue;
+      }
+
+      collectFeedbackOwnersFromFiber(committedFiber, owners);
+    }
+  }
+
+  return owners.length === 1 ? owners[0] : null;
+}
+
+function isSameFeedbackMarker(
+  left: FeedbackStabilityMarker,
+  right: FeedbackStabilityMarker | null
+): boolean {
+  return Boolean(
+    right &&
+      left.reviewActionId === right.reviewActionId &&
+      left.initialFeedback === right.initialFeedback
+  );
+}
+
+function prefillNullRatings(previous: unknown): unknown {
+  if (!isRatingState(previous)) {
+    return previous;
+  }
+
+  let next: Record<string, unknown> | null = null;
+  for (const [key, entry] of Object.entries(previous)) {
+    const ratingEntry = asObjectRecord(entry);
+    if (!ratingEntry || !hasOwn(ratingEntry, 'rating') || ratingEntry.rating != null) {
+      continue;
+    }
+
+    next ??= { ...previous };
+    next[key] = { ...ratingEntry, rating: 1 };
+  }
+
+  return next ?? previous;
+}
+
+function finishReviewerRatingPrefill(): void {
+  reviewerRatingPrefillPending = false;
+}
+
+function sampleReviewerRatingPrefill(marker: FeedbackStabilityMarker | null): void {
+  try {
+    requestAnimationFrame(() => {
+      try {
+        const owner = resolveFeedbackOwner();
+        if (!owner) {
+          finishReviewerRatingPrefill();
+          return;
+        }
+
+        const currentMarker: FeedbackStabilityMarker = {
+          initialFeedback: owner.initialFeedback,
+          reviewActionId: owner.reviewActionId
+        };
+        if (!marker || !isSameFeedbackMarker(marker, currentMarker)) {
+          sampleReviewerRatingPrefill(currentMarker);
+          return;
+        }
+
+        if (!hasNullRating(owner.state)) {
+          finishReviewerRatingPrefill();
+          return;
+        }
+
+        const dispatch = owner.queue.dispatch as (
+          update: (previous: unknown) => unknown
+        ) => void;
+        dispatch(prefillNullRatings);
+        finishReviewerRatingPrefill();
+      } catch {
+        finishReviewerRatingPrefill();
+      }
+    });
+  } catch {
+    finishReviewerRatingPrefill();
+  }
+}
+
+function scheduleReviewerRatingPrefill(): void {
+  if (reviewerRatingPrefillPending) {
+    return;
+  }
+
+  reviewerRatingPrefillPending = true;
+  sampleReviewerRatingPrefill(null);
+}
+
 function handleCommand(event: MessageEvent): void {
   if (event.source !== window) {
     return;
@@ -879,6 +1205,11 @@ function handleCommand(event: MessageEvent): void {
 
   const data = event.data as CommandMessage | null;
   if (!data || data.source !== COMMAND_SOURCE) {
+    return;
+  }
+
+  if (data.type === COMMAND_PREFILL_REVIEWER_RATINGS) {
+    scheduleReviewerRatingPrefill();
     return;
   }
 

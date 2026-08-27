@@ -3,6 +3,7 @@ import {
   COMMAND_FETCH_CURRENT_REVIEW_ACTION,
   COMMAND_FETCH_REVIEW_ACTION,
   COMMAND_FETCH_TRANSCRIPTION_DIFF,
+  COMMAND_PREFILL_REVIEWER_RATINGS,
   COMMAND_SOURCE,
   EVENT_REVIEW_ACTION_CAPTURED,
   EVENT_SOURCE,
@@ -24,6 +25,9 @@ export function createPageBridgeService() {
   return {
     inject(): void {
       bridge.inject();
+    },
+    prefillReviewerRatings(): void {
+      bridge.post(COMMAND_PREFILL_REVIEWER_RATINGS, {});
     },
     fetchCurrentReviewAction(): void {
       bridge.post(COMMAND_FETCH_CURRENT_REVIEW_ACTION, {});

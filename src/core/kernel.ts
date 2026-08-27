@@ -861,6 +861,7 @@ export function createReviewKernel(): ReviewKernel {
     async start(): Promise<void> {
       bridge.inject();
       installDialog();
+      bridge.prefillReviewerRatings();
 
       try {
         const stored = await loadState();
@@ -889,6 +890,7 @@ export function createReviewKernel(): ReviewKernel {
       form.ensure(() => runMagicReview());
     },
     ensureMagicButton(): void {
+      bridge.prefillReviewerRatings();
       form.ensure(() => runMagicReview());
     }
   };
