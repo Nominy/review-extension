@@ -12,7 +12,6 @@
 - Current review action payloads required for:
   - `POST /api/review/generate`
   - `POST /api/review/sessions`
-  - `GET /api/review/sessions/:id`
   - related interactive session endpoints
 - Reviewer comments saved during interactive review sessions
 - Final review application commands sent to the production backend

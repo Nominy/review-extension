@@ -81,16 +81,6 @@ export async function createReviewSession(args: RequestBase): Promise<ReviewSess
   });
 }
 
-export async function getReviewSession(
-  args: SessionRequestBase & {
-    sessionId: string;
-  }
-): Promise<ReviewSessionData> {
-  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).get<ReviewSessionData>(
-    `/api/review/sessions/${encodeURIComponent(args.sessionId)}`
-  );
-}
-
 export async function searchReviewTemplates(
   args: SessionRequestBase & {
     query: string;

@@ -85,7 +85,7 @@ function makeDocument({ scriptTexts = [], visibleText = '' } = {}) {
   };
 }
 
-async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visibleText = '' } = {}) {
+async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visibleText = '', fetchResponse } = {}) {
   const result = await build({
     entryPoints: [path.join(rootDir, 'src/content/page-bridge.ts')],
     bundle: true,
@@ -106,9 +106,13 @@ async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visi
   };
   const document = makeDocument({ scriptTexts, visibleText });
   class FakeXMLHttpRequest {
+    responseType = '';
+    responseText = '';
+    status = 200;
+    listeners = new Map();
     open() {}
-    send() {}
-    addEventListener() {}
+    send() { this.listeners.get('loadend')?.(); }
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
   }
   const window = {
     __babelReviewPageBridgeInstalled: false,
@@ -122,6 +126,9 @@ async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visi
     fetch: async (url, init) => {
       const urlText = String(url);
       fetchCalls.push({ url: urlText, init });
+      if (fetchResponse && !urlText.includes('transcriptions.getReviewActionDataById')) {
+        return responseFromText(fetchResponse);
+      }
       assert.equal(
         urlText.includes('transcriptions.getReviewActionsForChunk'),
         false,
@@ -156,7 +163,7 @@ async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visi
   });
 
   vm.runInContext(result.outputFiles[0].text, context, { filename: 'page-bridge-current-review-id-test-bundle.js' });
-  return { messages, listeners, fetchCalls, window };
+  return { messages, listeners, fetchCalls, window, XMLHttpRequest: FakeXMLHttpRequest };
 }
 
 async function flushBridgeMessage(messages, type) {
@@ -228,3 +235,56 @@ test('page bridge fetches current review action discovered from visible support 
 
   await assertCurrentReviewActionFetchedFromPage(harness);
 });
+
+for (const transport of ['fetch', 'xhr']) {
+  test(`${transport} capture uses claim responses only and preserves request precedence elsewhere`, async () => {
+    const cases = [
+      {
+        endpoint: 'claimNextReviewActionFromReviewQueue',
+        response: `{"json":{}}{"json":{"actionId":"${CURRENT_L2_ID}"}}`,
+        expectedId: CURRENT_L2_ID,
+        expectedSource: 'response'
+      },
+      {
+        endpoint: 'claimNextReviewActionFromReviewQueue',
+        response: '{}',
+        expectedId: '',
+        expectedSource: ''
+      },
+      {
+        endpoint: 'submitTranscriptReviewAction',
+        response: JSON.stringify({ actionId: CURRENT_L2_ID }),
+        expectedId: STALE_ID,
+        expectedSource: 'request'
+      },
+      {
+        endpoint: 'submitTranscriptReviewAction',
+        request: 'invalid',
+        response: JSON.stringify([{ actionId: CURRENT_L2_ID }]),
+        expectedId: CURRENT_L2_ID,
+        expectedSource: 'response'
+      }
+    ];
+
+    for (const scenario of cases) {
+      const harness = await loadPageBridgeHarness({ fetchResponse: scenario.response });
+      const url = `/api/trpc/transcriptions.${scenario.endpoint}?batch=1`;
+      const body = scenario.request ?? JSON.stringify({ 0: { json: { reviewActionId: STALE_ID } } });
+      if (transport === 'fetch') {
+        await harness.window.fetch(url, { method: 'POST', body });
+      } else {
+        const xhr = new harness.XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.responseText = scenario.response;
+        xhr.send(body);
+      }
+
+      const capture = harness.messages.find(
+        (message) => message.type === 'review-action-captured' && message.payload.transport === transport
+      );
+      assert.ok(capture, `${scenario.endpoint} should emit a ${transport} capture`);
+      assert.equal(capture.payload.extractedReviewActionId, scenario.expectedId);
+      assert.equal(capture.payload.extractedFrom, scenario.expectedSource);
+    }
+  });
+}

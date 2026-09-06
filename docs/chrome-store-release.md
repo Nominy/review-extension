@@ -4,6 +4,8 @@
 
 This checklist is for the production-only `release` build that targets unlisted tester distribution through the Chrome Web Store.
 
+Interactive reviews use the in-page workspace on the Babel dashboard, with direct finalization when needed.
+
 ## Build
 
 1. Run `npm install`.
@@ -16,7 +18,6 @@ Expected outputs:
 
 - `build/release/manifest.json`
 - `build/release/options.html`
-- `build/release/session.html`
 - `build/release/dist/...`
 - `build/release/icons/...`
 - `../babel-review-helper-0.3.0.zip`

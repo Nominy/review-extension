@@ -13,9 +13,10 @@ let toastTimer = 0;
 const TOAST_ID = "babel-review-magic-toast";
 const MIN_REVIEW_TEXTAREAS = 4;
 
-function getReviewContainer(): HTMLElement | null {
+function getReviewContainer(requireWritable = false): HTMLElement | null {
   const textarea = document.querySelector<HTMLTextAreaElement>(
-    'textarea[placeholder="Provide specific feedback..."]',
+    'textarea[placeholder="Provide specific feedback..."]' +
+      (requireWritable ? ":not(:disabled):not([readonly])" : ""),
   );
   if (!textarea) {
     return null;
@@ -175,6 +176,7 @@ function setNativeValue(element: HTMLTextAreaElement, value: string): void {
 function findCardByCategory(
   root: ParentNode,
   category: string,
+  allowDocumentFallback = true,
 ): HTMLElement | null {
   const prefix = RATING_PREFIX_BY_CATEGORY[category];
   if (!prefix) {
@@ -183,7 +185,8 @@ function findCardByCategory(
 
   const selector = `#${CSS.escape(prefix)}-1`;
   const control =
-    root.querySelector(selector) || document.querySelector(selector);
+    root.querySelector(selector) ||
+    (allowDocumentFallback ? document.querySelector(selector) : null);
   if (!(control instanceof HTMLElement)) {
     return null;
   }
@@ -206,14 +209,17 @@ export function createReviewFormService(): MagicButtonController {
     ensure(onClick): void {
       ensureStyles();
 
-      if (document.getElementById(MAGIC_BUTTON_ID)) {
+      const existing = document.getElementById(MAGIC_BUTTON_ID);
+      const container = getReviewContainer(true);
+      if (!container) {
+        existing?.remove();
         return;
       }
 
-      const container = getReviewContainer();
-      if (!container) {
+      if (existing && container.contains(existing)) {
         return;
       }
+      existing?.remove();
 
       const button = document.createElement("button");
       button.id = MAGIC_BUTTON_ID;
@@ -225,6 +231,10 @@ export function createReviewFormService(): MagicButtonController {
         <span class="babel-review-magic-label">Magic Review</span>
       `;
       button.addEventListener("click", () => {
+        if (!getReviewContainer(true)?.contains(button)) {
+          button.remove();
+          return;
+        }
         void onClick();
       });
 
@@ -244,6 +254,10 @@ export function createReviewFormService(): MagicButtonController {
     setState(mode, label): void {
       const button = document.getElementById(MAGIC_BUTTON_ID);
       if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      if (!getReviewContainer(true)?.contains(button)) {
+        button.remove();
         return;
       }
 
@@ -284,7 +298,10 @@ export function createReviewFormService(): MagicButtonController {
     async applyFeedback(
       feedback: FeedbackItem[],
     ): Promise<{ applied: number }> {
-      const root = getReviewContainer() || document;
+      const root = getReviewContainer(true);
+      if (!root) {
+        return { applied: 0 };
+      }
       let applied = 0;
       const targets: Array<{ note: string; card: HTMLElement }> = [];
 
@@ -295,7 +312,7 @@ export function createReviewFormService(): MagicButtonController {
           continue;
         }
 
-        const card = findCardByCategory(root, category);
+        const card = findCardByCategory(root, category, false);
         if (card) {
           targets.push({ card, note: note.slice(0, 500) });
         }
@@ -305,7 +322,13 @@ export function createReviewFormService(): MagicButtonController {
         const textarea = target.card.querySelector<HTMLTextAreaElement>(
           'textarea[placeholder="Provide specific feedback..."]',
         );
-        if (!textarea) {
+        if (
+          !textarea ||
+          !root.contains(textarea) ||
+          textarea.disabled ||
+          textarea.readOnly ||
+          textarea.matches(":disabled")
+        ) {
           continue;
         }
 

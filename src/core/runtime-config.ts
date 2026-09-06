@@ -10,9 +10,6 @@ import type { ExtensionSettings } from './types';
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
   backendBaseUrlFallbacks: [...DEFAULT_BACKEND_BASE_URL_FALLBACKS],
-  overlayMinimized: true,
-  overlayPosX: 24,
-  overlayPosY: 96,
   refreshTimeoutMs: 9000,
   workflowMode: 'interactive'
 };
@@ -25,8 +22,10 @@ export const RUNTIME_POLICY = {
 
 export function sanitizeSettings(input?: Partial<ExtensionSettings> | null): ExtensionSettings {
   const next: ExtensionSettings = {
-    ...DEFAULT_SETTINGS,
-    ...(input || {})
+    backendBaseUrl: input?.backendBaseUrl ?? DEFAULT_SETTINGS.backendBaseUrl,
+    backendBaseUrlFallbacks: input?.backendBaseUrlFallbacks ?? DEFAULT_SETTINGS.backendBaseUrlFallbacks,
+    refreshTimeoutMs: input?.refreshTimeoutMs ?? DEFAULT_SETTINGS.refreshTimeoutMs,
+    workflowMode: input?.workflowMode ?? DEFAULT_SETTINGS.workflowMode
   };
 
   if (!ALLOW_BACKEND_OVERRIDES) {

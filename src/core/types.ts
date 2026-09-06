@@ -1,9 +1,6 @@
 ﻿export interface ExtensionSettings {
   backendBaseUrl: string;
   backendBaseUrlFallbacks: string[];
-  overlayMinimized: boolean;
-  overlayPosX: number;
-  overlayPosY: number;
   refreshTimeoutMs: number;
   workflowMode: 'interactive' | 'fast';
 }
@@ -225,16 +222,6 @@ export interface ReviewSessionFinalizeResponse {
   categoryFeedback: FeedbackItem[];
   aiReview?: GeneratedReviewResponse['llm'] | null;
   [key: string]: unknown;
-}
-
-export interface ReviewSessionApplyCommand {
-  commandId: string;
-  sessionId: string;
-  reviewActionId: string;
-  clientId: string;
-  createdAt: string;
-  feedback: FeedbackItem[];
-  aiReview?: GeneratedReviewResponse['llm'] | null;
 }
 
 declare global {

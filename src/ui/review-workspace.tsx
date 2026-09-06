@@ -23,7 +23,6 @@ type ReviewWorkspaceHandlers = {
 
 type ReviewWorkspaceProps = {
   store: ReviewWorkspaceStore;
-  variant: 'overlay' | 'page';
   closeLabel?: string;
 } & ReviewWorkspaceHandlers;
 
@@ -400,8 +399,12 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
     [session]
   );
 
+  if (!open) {
+    return null;
+  }
+
   const content = (
-    <div className={props.variant === 'page' ? 'br-page' : ''}>
+    <div>
       <div className="br-page-shell">
         <div className="br-shell-surface">
           <div className="br-header">
@@ -591,23 +594,16 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
     </div>
   );
 
-  if (props.variant === 'overlay') {
-    if (!open) {
-      return null;
-    }
-    return (
-      <div className="br-overlay-root">
-        <div className="br-overlay-backdrop" onClick={props.onBackdropClose || props.onClose} />
-        <div className="br-overlay-shell">
-          <div className="br-overlay-dialog" onClick={(event) => event.stopPropagation()}>
-            {content}
-          </div>
+  return (
+    <div className="br-overlay-root">
+      <div className="br-overlay-backdrop" onClick={props.onBackdropClose || props.onClose} />
+      <div className="br-overlay-shell">
+        <div className="br-overlay-dialog" onClick={(event) => event.stopPropagation()}>
+          {content}
         </div>
       </div>
-    );
-  }
-
-  return content;
+    </div>
+  );
 }
 
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {

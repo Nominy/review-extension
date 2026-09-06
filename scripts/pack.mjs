@@ -46,7 +46,7 @@ await packExtension({
 
 function validateManifestAssets(manifest, entries) {
   const packagedFiles = new Set(entries.map((entry) => entry.rel.replace(/\\/g, '/')));
-  const requiredFiles = ['manifest.json', 'options.html', 'session.html'];
+  const requiredFiles = ['manifest.json', 'options.html'];
   const iconFiles = Object.values(manifest.icons || {});
   const contentFiles = (manifest.content_scripts || []).flatMap((entry) => entry.js || []);
   const webResources = (manifest.web_accessible_resources || []).flatMap((entry) => entry.resources || []);

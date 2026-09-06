@@ -5,6 +5,8 @@ MV3 extension for Babel transcription reviews. The project now builds in two fla
 - `dev`: local iteration build with configurable backend endpoints and localhost fallback support.
 - `release`: Chrome Web Store build locked to `https://reviewgen.ovh` with the minimum required permissions.
 
+Interactive reviews use the in-page workspace on the Babel dashboard, with direct finalization when needed.
+
 ## Build
 
 1. Install dependencies:
@@ -37,17 +39,15 @@ Source lives under `src/`:
 - `parsers/` TRPC stream parsing and review action normalization
 - `services/` page bridge injection plus review form/UI helpers
 - `content/` Babel page entrypoints (`entry.ts`, `page-bridge.ts`)
-- `session/` dedicated interactive review session window
+- `ui/` in-page review workspace
 - `options/` extension settings page
 
 Build outputs are generated into `build/<flavor>/`, including:
 
 - `manifest.json`
 - `options.html`
-- `session.html`
 - `dist/content/entry.js`
 - `dist/content/page-bridge.js`
-- `dist/session/entry.js`
 - `dist/options/entry.js`
 - `icons/*.png`
 
@@ -56,6 +56,9 @@ Build outputs are generated into `build/<flavor>/`, including:
 - Release builds remove localhost host permissions and do not expose backend override controls.
 - Release packaging excludes sourcemaps and validates that every manifest-referenced asset is present.
 - Submit-time analytics from the extension are disabled in release builds.
+- Review snapshots stay in memory; startup clears legacy stored snapshots. Network captures do not rewrite settings saved by the options page.
+- Magic Review is available only for writable native feedback forms. Read-only feedback retains its existing comments and ratings; stale buttons are removed, and feedback application rechecks the native fields before writing.
+- Template search clears obsolete matches while a new query is pending, shows an empty-results state for unmatched queries, and clears that state when the query is removed.
 
 Supporting release docs live in [docs/chrome-store-release.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-release.md), [docs/chrome-store-data-disclosure.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-data-disclosure.md), and [docs/privacy-policy.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/privacy-policy.md).
 

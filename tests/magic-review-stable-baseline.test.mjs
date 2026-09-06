@@ -91,7 +91,10 @@ function mockPlugin() {
       `export async function loadState() {
          return globalThis.__kernelHarness.storedState || { sessions: {}, settings: globalThis.__kernelHarness.settings || {}, selectedSessionId: '' };
        }
-       export async function saveState(nextState) { globalThis.__kernelHarness.savedStates.push(nextState); }`
+       export async function saveState(nextState) {
+         globalThis.__kernelHarness.savedStates.push(nextState);
+         globalThis.__kernelHarness.storedState = nextState;
+       }`
     ],
     [
       './backend-client',
@@ -105,7 +108,10 @@ function mockPlugin() {
        }
        export async function submitTranscriptReviewActionAnalytics(args) { globalThis.__kernelHarness.backendCalls.push({ type: 'analytics', args }); }
        export async function decideReviewSessionSuggestion() { throw new Error('not used'); }
-       export async function finalizeReviewSession() { throw new Error('not used'); }
+       export async function finalizeReviewSession(args) {
+         globalThis.__kernelHarness.backendCalls.push({ type: 'finalizeReviewSession', args });
+         return globalThis.__kernelHarness.finalizeResult;
+       }
        export async function generateReviewSessionSuggestions() { throw new Error('not used'); }
        export async function searchReviewTemplates() { throw new Error('not used'); }
        export async function clearReviewSessionCardTemplateMatch() { throw new Error('not used'); }
@@ -301,6 +307,39 @@ test('Magic Review discovers current L2 without a URL reviewActionId and ignores
   assert.equal(harness.backendCalls[0].args.original.actionId, STABLE_L1_ID);
 });
 
+test('captures preserve options changes after startup clears legacy review snapshots', async () => {
+  const { harness, context } = await loadKernelHarness({
+    storedState: {
+      sessions: { [STORED_STALE_ID]: storedSession(STORED_STALE_ID, 1) },
+      selectedSessionId: STORED_STALE_ID,
+      settings: baseSettings('fast')
+    }
+  });
+  assert.deepEqual(Object.keys(harness.storedState.sessions), []);
+  assert.equal(harness.storedState.selectedSessionId, '');
+  const startupWrites = harness.savedStates.length;
+  const optionsSettings = { ...baseSettings('interactive'), backendBaseUrl: 'https://updated.test' };
+  harness.storedState = { ...harness.storedState, settings: optionsSettings };
+
+  const timers = new Map();
+  let nextTimerId = 0;
+  context.window.setTimeout = (callback) => {
+    const id = ++nextTimerId;
+    timers.set(id, callback);
+    return id;
+  };
+  context.window.clearTimeout = (id) => timers.delete(id);
+  emitStableL2Flow(harness);
+  await harness.magicReview();
+  for (const callback of timers.values()) {
+    callback();
+  }
+
+  assert.equal(harness.appliedFeedback[0][0].category, 'Word Accuracy');
+  assert.equal(harness.savedStates.length, startupWrites, 'network captures must not write storage');
+  assert.equal(harness.storedState.settings, optionsSettings, 'captures must not overwrite newer options settings');
+});
+
 test('Magic Review recomputes live current review state on every click in one runtime', async () => {
   const { harness } = await loadKernelHarness({
     href: 'https://dashboard.babel.audio/review',
@@ -446,6 +485,14 @@ test('interactive Magic Review sends L1-as-original and never promotes a non-L1 
   assert.equal(sessionCall.args.original.actionId, STABLE_L1_ID);
   assert.equal(sessionCall.args.original.actionLevel, 1);
   assert.notEqual(sessionCall.args.original.actionId, sessionCall.args.current.actionId);
+  assert.equal(harness.appliedFeedback.length, 0, 'interactive review waits for finalization');
+  const feedback = [{ category: 'Word Accuracy', rating: 'good', comment: 'Final interactive feedback.' }];
+  harness.finalizeResult = { categoryFeedback: feedback };
+  const storageWrites = harness.savedStates.length;
+  await harness.dialogCallbacks.onFinalize('apply');
+  assert.deepEqual(harness.appliedFeedback, [feedback]);
+  assert.equal(harness.dialogEvents.at(-1).type, 'close');
+  assert.equal(harness.savedStates.length, storageWrites, 'finalized feedback is applied directly without a storage handoff');
   assert.equal(harness.toasts.some((toast) => toast.isError), false);
 });
 

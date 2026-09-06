@@ -1,6 +1,6 @@
 import type { CapturedNetworkEntry, NormalizedReviewAction, ReviewAnnotation, ReviewLintError, ReviewRecording } from '../core/types';
 
-function parseMaybeJson(text: string): unknown {
+export function parseMaybeJson(text: string): unknown {
   const trimmed = text.trim();
   if (!trimmed) {
     return null;
