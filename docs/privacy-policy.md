@@ -13,7 +13,7 @@ The extension processes review-related information visible on `https://dashboard
 The extension sends the minimum workflow data required to the configured backend service so it can:
 
 - generate category-specific review feedback
-- create and reopen interactive review sessions
+- create interactive review sessions in the Babel dashboard
 - save reviewer comments during an interactive session
 - finalize a review and return feedback for application inside Babel
 
@@ -25,7 +25,7 @@ The backend may use OpenRouter-backed language models to analyze review changes 
 
 ## Local storage
 
-The extension stores settings and session coordination data in `chrome.storage.local` so the workflow can continue between extension pages.
+The extension stores settings in `chrome.storage.local`. Review snapshots remain in memory while the Babel page is open; startup clears legacy locally stored review snapshots. Interactive review feedback is applied directly to the Babel form.
 
 ## Logging and retention
 

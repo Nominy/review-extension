@@ -61,7 +61,6 @@ export function createReviewDialogService() {
         onTemplateSearchChange={(cardId, query) => handlers?.onTemplateSearch(cardId, query)}
         onTemplateSelect={(cardId, templateId) => handlers?.onTemplateSelect(cardId, templateId)}
         store={store}
-        variant="overlay"
       />
     );
   }

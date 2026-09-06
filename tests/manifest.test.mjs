@@ -12,6 +12,24 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, ''));
 }
 
+function readZipEntryNames(zipPath) {
+  const archive = fs.readFileSync(zipPath);
+  const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  assert.ok(end >= 0, 'ZIP must contain an end-of-central-directory record');
+  const count = archive.readUInt16LE(end + 10);
+  let offset = archive.readUInt32LE(end + 16);
+  const names = new Set();
+  for (let index = 0; index < count; index += 1) {
+    assert.equal(archive.readUInt32LE(offset), 0x02014b50, 'ZIP directory entry must have a valid signature');
+    const nameLength = archive.readUInt16LE(offset + 28);
+    const extraLength = archive.readUInt16LE(offset + 30);
+    const commentLength = archive.readUInt16LE(offset + 32);
+    names.add(archive.toString('utf8', offset + 46, offset + 46 + nameLength));
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return names;
+}
+
 test('release manifest matches package version and minimum permissions', () => {
   const manifest = createManifest('release');
 
@@ -63,16 +81,24 @@ test('release pack includes all manifest-referenced files and excludes sourcemap
   });
 
   const manifest = readJson(path.resolve(rootDir, 'build', 'release', 'manifest.json'));
-  const zipText = fs.readFileSync(zipPath).toString('utf8');
+  const entries = readZipEntryNames(zipPath);
+  const requiredFiles = [
+    'manifest.json',
+    'options.html',
+    'dist/content/entry.js',
+    'dist/content/page-bridge.js',
+    'dist/options/entry.js',
+    manifest.options_page,
+    ...Object.values(manifest.icons || {}),
+    ...Object.values(manifest.action?.default_icon || {}),
+    ...(manifest.content_scripts || []).flatMap((entry) => [...(entry.js || []), ...(entry.css || [])]),
+    ...(manifest.web_accessible_resources || []).flatMap((entry) => entry.resources || [])
+  ].filter(Boolean);
 
-  assert.match(zipText, /manifest\.json/);
-  assert.match(zipText, /options\.html/);
-  assert.match(zipText, /session\.html/);
-
-  for (const iconPath of Object.values(manifest.icons || {})) {
-    const escaped = String(iconPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    assert.match(zipText, new RegExp(escaped));
+  for (const file of requiredFiles) {
+    assert.equal(entries.has(file), true, `release ZIP must include ${file}`);
   }
-
-  assert.equal(/\.map/.test(zipText), false);
+  assert.equal(entries.has('session.html'), false, 'retired page must not be packaged');
+  assert.equal(entries.has('dist/session/entry.js'), false, 'retired page bundle must not be packaged');
+  assert.deepEqual([...entries].filter((entry) => entry.endsWith('.map')), []);
 });

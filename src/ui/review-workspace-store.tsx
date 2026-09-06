@@ -33,7 +33,6 @@ export type ReviewWorkspaceActions = {
   setStatus: (message: string, isError?: boolean) => void;
   close: () => void;
   toggleExpandedRow: (cardId: string) => void;
-  setExpandedRow: (cardId: string, expanded: boolean) => void;
   setSessionCommentDraft: (value: string) => void;
   setCardCommentDraft: (cardId: string, value: string) => void;
   setTemplateSearchState: (cardId: string, next: Partial<TemplateSearchState>) => void;
@@ -144,13 +143,6 @@ export function createReviewWorkspaceStore() {
         expandedRows: {
           ...state.expandedRows,
           [cardId]: !state.expandedRows[cardId]
-        }
-      })),
-    setExpandedRow: (cardId, expanded) =>
-      set((state) => ({
-        expandedRows: {
-          ...state.expandedRows,
-          [cardId]: expanded
         }
       })),
     setSessionCommentDraft: (value) => set({ sessionCommentDraft: value }),

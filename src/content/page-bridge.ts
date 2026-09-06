@@ -8,6 +8,7 @@ import {
   EVENT_SOURCE,
   EVENT_TRANSCRIPTION_DIFF_FETCHED
 } from '../core/constants';
+import { parseMaybeJson, parseTrpcFrameStream } from '../parsers/review-action-parser';
 
 const CLAIM_NEEDLE = 'claimNextReviewActionFromReviewQueue';
 const REVIEW_DATA_NEEDLE = 'getReviewActionDataById';
@@ -185,35 +186,6 @@ function postPayload(type: string, payload: unknown): void {
   );
 }
 
-function parseMaybeJson(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-function parseTrpcFrameStream(rawText: string): unknown[] {
-  const trimmed = rawText.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  const direct = parseMaybeJson(trimmed);
-  if (direct !== null) {
-    return Array.isArray(direct) ? direct : [direct];
-  }
-
-  const normalized = `[${trimmed.replace(/}\s*{/g, '},{')}]`;
-  const stream = parseMaybeJson(normalized);
-  return Array.isArray(stream) ? stream : [];
-}
-
 function normalizeReviewActionId(value: unknown): string {
   return typeof value === 'string' && REVIEW_ACTION_ID_REGEX.test(value) ? value : '';
 }
@@ -257,12 +229,12 @@ function findReviewActionIdByKeyDeep(node: unknown): string {
 }
 
 function extractReviewActionIdFromRequestBody(requestBodyText: string, endpoint: string): string {
-  const parsed = parseMaybeJson(requestBodyText);
-  if (!parsed || typeof parsed !== 'object') {
+  if (endpoint === CLAIM_NEEDLE) {
     return '';
   }
 
-  if (endpoint === CLAIM_NEEDLE) {
+  const parsed = parseMaybeJson(requestBodyText);
+  if (!parsed || typeof parsed !== 'object') {
     return '';
   }
 
@@ -293,6 +265,22 @@ function extractReviewActionIdFromResponseText(responseText: string): string {
     }
   }
   return '';
+}
+
+function extractCapturedReviewActionId(
+  endpoint: string,
+  requestBody: string,
+  responseBody: string
+): { reviewActionId: string; extractedFrom: string } {
+  if (endpoint !== CLAIM_NEEDLE) {
+    const reviewActionId = extractReviewActionIdFromRequestBody(requestBody, endpoint);
+    if (reviewActionId) {
+      return { reviewActionId, extractedFrom: 'request' };
+    }
+  }
+
+  const reviewActionId = extractReviewActionIdFromResponseText(responseBody);
+  return { reviewActionId, extractedFrom: reviewActionId ? 'response' : '' };
 }
 
 function extractReviewActionIdFromTrpcInputUrl(urlText: string): string {
@@ -763,23 +751,7 @@ window.fetch = async function patchedFetch(input: RequestInfo | URL, init?: Requ
         responseBody = `[unreadable response body: ${error instanceof Error ? error.message : String(error)}]`;
       }
 
-      let reviewActionId = '';
-      let extractedFrom = '';
-      if (endpoint === CLAIM_NEEDLE) {
-        reviewActionId = extractReviewActionIdFromResponseText(responseBody);
-        extractedFrom = reviewActionId ? 'response' : '';
-        if (!reviewActionId) {
-          reviewActionId = extractReviewActionIdFromRequestBody(requestBody, endpoint);
-          extractedFrom = reviewActionId ? 'request' : '';
-        }
-      } else {
-        reviewActionId = extractReviewActionIdFromRequestBody(requestBody, endpoint);
-        extractedFrom = reviewActionId ? 'request' : '';
-        if (!reviewActionId) {
-          reviewActionId = extractReviewActionIdFromResponseText(responseBody);
-          extractedFrom = reviewActionId ? 'response' : '';
-        }
-      }
+      const { reviewActionId, extractedFrom } = extractCapturedReviewActionId(endpoint, requestBody, responseBody);
 
       postPayload(EVENT_REVIEW_ACTION_CAPTURED, {
         transport: 'fetch',
@@ -867,23 +839,7 @@ XMLHttpRequest.prototype.send = function patchedSend(
         responseBody = `[unreadable xhr response: ${error instanceof Error ? error.message : String(error)}]`;
       }
 
-      let reviewActionId = '';
-      let extractedFrom = '';
-      if (endpoint === CLAIM_NEEDLE) {
-        reviewActionId = extractReviewActionIdFromResponseText(responseBody);
-        extractedFrom = reviewActionId ? 'response' : '';
-        if (!reviewActionId) {
-          reviewActionId = extractReviewActionIdFromRequestBody(meta.requestBody, endpoint);
-          extractedFrom = reviewActionId ? 'request' : '';
-        }
-      } else {
-        reviewActionId = extractReviewActionIdFromRequestBody(meta.requestBody, endpoint);
-        extractedFrom = reviewActionId ? 'request' : '';
-        if (!reviewActionId) {
-          reviewActionId = extractReviewActionIdFromResponseText(responseBody);
-          extractedFrom = reviewActionId ? 'response' : '';
-        }
-      }
+      const { reviewActionId, extractedFrom } = extractCapturedReviewActionId(endpoint, meta.requestBody, responseBody);
 
       postPayload(EVENT_REVIEW_ACTION_CAPTURED, {
         transport: 'xhr',

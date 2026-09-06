@@ -102,7 +102,7 @@ export function createManifest(flavor = 'dev') {
     ],
     web_accessible_resources: [
       {
-        resources: ['dist/content/page-bridge.js', 'session.html', 'dist/session/entry.js'],
+        resources: ['dist/content/page-bridge.js'],
         matches: [...config.contentMatches]
       }
     ]

@@ -40,9 +40,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "dist/content/page-bridge.js",
-        "session.html",
-        "dist/session/entry.js"
+        "dist/content/page-bridge.js"
       ],
       "matches": [
         "https://dashboard.babel.audio/*"

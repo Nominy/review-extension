@@ -78,7 +78,6 @@ export function createReviewKernel(): ReviewKernel {
     reviewActionId: '',
     original: null as NormalizedReviewAction | null,
     current: null as NormalizedReviewAction | null,
-    baselineHydratedFromStorage: false,
     lastAiReview: null as GeneratedReviewResponse['llm'] | null,
     lastTranscriptionDiff: null as BabelDiffPayload | null,
     activeSession: null as ReviewSessionData | null,
@@ -89,7 +88,6 @@ export function createReviewKernel(): ReviewKernel {
     pendingBaselineFetch: null as PendingBaselineFetch | null
   };
 
-  let persistTimer = 0;
   let commentSaveTimer = 0;
   let commentRevision = 0;
   let savedCommentRevision = 0;
@@ -104,27 +102,10 @@ export function createReviewKernel(): ReviewKernel {
     );
   }
 
-  function schedulePersist(): void {
-    window.clearTimeout(persistTimer);
-    persistTimer = window.setTimeout(() => {
-      persistTimer = 0;
-      void persistSettings();
-    }, 220);
-  }
-
-  async function persistSettings(): Promise<void> {
-    await saveState({
-      sessions: {},
-      settings: state.settings,
-      selectedSessionId: ''
-    });
-  }
-
   function resetReviewSnapshot(): void {
     state.reviewActionId = '';
     state.original = null;
     state.current = null;
-    state.baselineHydratedFromStorage = false;
     state.lastAiReview = null;
     state.lastTranscriptionDiff = null;
     state.pendingBaselineFetch = null;
@@ -187,7 +168,7 @@ export function createReviewKernel(): ReviewKernel {
     if (urlActionId) {
       return urlActionId;
     }
-    if (state.baselineHydratedFromStorage || Number(state.current?.actionLevel) === 1) {
+    if (Number(state.current?.actionLevel) === 1) {
       return '';
     }
     return state.reviewActionId;
@@ -224,8 +205,6 @@ export function createReviewKernel(): ReviewKernel {
       if (!state.reviewActionId || state.reviewActionId === pendingBaseline.currentActionId) {
         state.reviewActionId = pendingBaseline.currentActionId;
         state.original = normalized;
-        state.baselineHydratedFromStorage = false;
-        schedulePersist();
       }
       resolveCaptureWaiters(actionId, normalized, entry);
       return;
@@ -239,8 +218,6 @@ export function createReviewKernel(): ReviewKernel {
       Number(state.current.actionLevel) !== 1
     ) {
       state.original = normalized;
-      state.baselineHydratedFromStorage = false;
-      schedulePersist();
       resolveCaptureWaiters(actionId, normalized, entry);
       return;
     }
@@ -249,23 +226,19 @@ export function createReviewKernel(): ReviewKernel {
       state.reviewActionId = actionId;
       state.original = stableOriginal ? normalized : null;
       state.current = normalized;
-      state.baselineHydratedFromStorage = false;
       state.lastTranscriptionDiff = null;
       updateActiveSession(null);
     } else {
       state.reviewActionId = actionId;
       if (stableOriginal) {
         state.original = normalized;
-        state.baselineHydratedFromStorage = false;
       } else if (!state.original || state.original.actionId === actionId) {
         state.original = null;
-        state.baselineHydratedFromStorage = false;
       }
       state.current = normalized;
       state.lastTranscriptionDiff = null;
     }
 
-    schedulePersist();
     resolveCaptureWaiters(actionId, normalized, entry);
   }
 
@@ -306,8 +279,6 @@ export function createReviewKernel(): ReviewKernel {
   async function refreshStableOriginal(actionId: string): Promise<void> {
     if (state.current?.actionId === actionId && Number(state.current.actionLevel) === 1) {
       state.original = state.current;
-      state.baselineHydratedFromStorage = false;
-      schedulePersist();
       return;
     }
 
@@ -509,21 +480,19 @@ export function createReviewKernel(): ReviewKernel {
       window.clearTimeout(pendingTimer);
     }
 
+    dialog.setTemplateSearchState(cardId, {
+      query: trimmed,
+      loading: Boolean(trimmed),
+      error: '',
+      results: []
+    });
+
     if (!trimmed) {
-      dialog.setTemplateSearchState(cardId, {
-        loading: false,
-        error: '',
-        results: []
-      });
       return;
     }
 
     const timer = window.setTimeout(async () => {
       try {
-        dialog.setTemplateSearchState(cardId, {
-          loading: true,
-          error: ''
-        });
         const result = await searchReviewTemplates({
           backendBaseUrl: state.settings.backendBaseUrl.trim(),
           backendBaseUrlFallbacks: getBackendBaseCandidates(),
@@ -866,9 +835,13 @@ export function createReviewKernel(): ReviewKernel {
       try {
         const stored = await loadState();
         state.settings = sanitizeSettings(stored.settings);
-        void persistSettings();
+        void saveState({
+          sessions: {},
+          settings: state.settings,
+          selectedSessionId: ''
+        });
       } catch {
-        // Ignore storage failures; runtime capture will rebuild state.
+        // Keep defaults when storage is unavailable; captures remain in memory.
       }
 
       bridge.onReviewActionCaptured(handleCapturedEntry);

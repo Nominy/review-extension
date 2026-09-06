@@ -25,7 +25,7 @@ function cleanBuildDirectory() {
 }
 
 function copyStaticFiles() {
-  const staticFiles = ['options.html', 'session.html'];
+  const staticFiles = ['options.html'];
   for (const file of staticFiles) {
     cpSync(resolve(ROOT, file), resolve(buildDir, file));
   }
@@ -85,10 +85,6 @@ const config = defineExtensionBuild({
     {
       entryPoints: ['src/content/page-bridge.ts'],
       outfile: resolve(distDir, 'content', 'page-bridge.js')
-    },
-    {
-      entryPoints: ['src/session/entry.tsx'],
-      outfile: resolve(distDir, 'session', 'entry.js')
     },
     {
       entryPoints: ['src/options/entry.tsx'],
