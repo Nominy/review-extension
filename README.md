@@ -62,9 +62,11 @@ Build outputs are generated into `build/<flavor>/`, including:
 
 Supporting release docs live in [docs/chrome-store-release.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-release.md), [docs/chrome-store-data-disclosure.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-data-disclosure.md), and [docs/privacy-policy.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/privacy-policy.md).
 
-GitHub Releases are the canonical home for packaged ZIPs. The manual release workflow builds the `.artifacts/` ZIP, tags the released commit as `v<version>`, and uploads the ZIP asset there.
+GitHub Releases are the canonical home for packaged ZIPs. The version committed in `manifest.json`, `package.json` and `package-lock.json` is the release version: bump it in the PR with `npm run version:patch`; CI never bumps or commits versions. It must be greater than what the Chrome Web Store currently holds; the publish script checks the store's published and submitted versions and aborts otherwise.
 
-Chrome Web Store deployment uses `.github/workflows/deploy-review-interceptor-extension.yml`. It runs `npm run version:patch`, validates the release build, packages the `.artifacts/` ZIP, publishes it to the Chrome Web Store, commits the bumped version files, and then updates the matching GitHub Release asset.
+Push to `main` (`.github/workflows/deploy-review-interceptor-extension.yml`, job `prerelease`) validates, builds the release flavor, packages the `.artifacts/` ZIP, uploads it as a workflow artifact, and creates a GitHub *pre-release* tagged `v<version>` at that commit. It never publishes to the Chrome Web Store. If `v<version>` is already a full release the job fails until the version is bumped.
+
+Publishing to the Chrome Web Store is manual only: run the same workflow via `workflow_dispatch` (job `publish`) with `version` (must equal `manifest.json` on the selected ref, whose tag `v<version>` must point at that commit and still be a pre-release) and `confirm` set to `PUBLISH <version>`. `publish_type` defaults to `STAGED_PUBLISH`; `replace_pending_submission` cancels a pending review first. The job re-validates, rebuilds, uploads and publishes, then promotes the pre-release to a full release.
 
 Required GitHub Actions secrets:
 - `CWS_CLIENT_ID`
