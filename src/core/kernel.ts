@@ -89,6 +89,7 @@ export function createReviewKernel(): ReviewKernel {
   };
 
   let commentSaveTimer = 0;
+  let gradingSnapshotPending = false;
   let commentRevision = 0;
   let savedCommentRevision = 0;
   let commentSaveChain: Promise<void> = Promise.resolve();
@@ -719,7 +720,7 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   async function runMagicReview(): Promise<void> {
-    if (state.generating) {
+    if (state.generating || gradingSnapshotPending) {
       return;
     }
 
@@ -827,6 +828,27 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   return {
+    async prepareGradingSnapshot() {
+      if (state.generating || gradingSnapshotPending || dialog.isOpen()) {
+        throw new Error('Finish or close the current Review Helper session before grading.');
+      }
+      const url = window.location.href;
+      gradingSnapshotPending = true;
+      try {
+        resetReviewSnapshot();
+        const actionId = await ensureCurrentReviewActionId();
+        await refreshLatestCurrent(actionId);
+        await refreshStableOriginal(actionId);
+        const pair = requireBaseline();
+        if (window.location.href !== url || pair.actionId !== actionId || pair.current.actionId !== actionId
+          || Number(pair.original.actionLevel) !== 1 || Number(pair.current.actionLevel) <= 1
+          || pair.original.actionId === pair.current.actionId) {
+          throw new Error('The review changed or no stable L1 original is available. Open the current review and try again.');
+        }
+        return { reviewActionId: actionId, original: structuredClone(pair.original), current: structuredClone(pair.current),
+          backendBaseUrl: sanitizeSettings(state.settings).backendBaseUrl };
+      } finally { gradingSnapshotPending = false; }
+    },
     async start(): Promise<void> {
       bridge.inject();
       installDialog();

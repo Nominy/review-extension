@@ -137,6 +137,7 @@ export interface InputSnapshot {
 export interface ReviewKernel {
   start(): Promise<void>;
   ensureMagicButton(): void;
+  prepareGradingSnapshot(): Promise<{ reviewActionId: string; original: NormalizedReviewAction; current: NormalizedReviewAction; backendBaseUrl: string }>;
 }
 
 export interface MagicButtonController {

@@ -7,6 +7,13 @@ MV3 extension for Babel transcription reviews. The project now builds in two fla
 
 Interactive reviews use the in-page workspace on the Babel dashboard, with direct finalization when needed.
 
+The separate **Babel Review Grader** addon uses this extension's versioned,
+read-only snapshot bridge to retrieve the stable L1 original and freshly fetched
+current review. It supplies its own grading UI and changes only native ratings;
+Review Helper continues to handle feedback notes and interactive review sessions.
+Close any open Review Helper workspace before grading. The backend must include
+`POST /api/review/grade`; the addon uses the backend address configured here.
+
 ## Build
 
 1. Install dependencies:
