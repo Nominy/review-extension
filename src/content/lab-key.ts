@@ -2,9 +2,23 @@ import { keyedRequest } from '../core/review-key';
 import { mountKeyPanel } from '../ui/key-panel';
 
 if (/^\/templates-lab\/?$/.test(location.pathname)) {
-  const host = document.createElement('div'); host.style.marginBottom = '20px';
-  (document.querySelector('.hero') || document.body.firstElementChild)?.after(host);
-  mountKeyPanel(host, () => location.origin);
+  const mountSettingsKeyPanel = () => {
+    const host = document.querySelector<HTMLElement>('#labSettingsDialog #labSettingsKeyHost');
+    if (!host) return false;
+    if (host.dataset.labKeyMounted !== 'true') {
+      mountKeyPanel(host, () => location.origin);
+      host.dataset.labKeyMounted = 'true';
+    }
+    const unavailable = document.querySelector<HTMLElement>('#labSettingsDialog #labKeyUnavailable');
+    if (unavailable) unavailable.hidden = true;
+    return true;
+  };
+  if (!mountSettingsKeyPanel()) {
+    const observer = new MutationObserver(() => {
+      if (mountSettingsKeyPanel()) observer.disconnect();
+    });
+    observer.observe(document, { childList: true, subtree: true });
+  }
   const protocol = 'babel-review-lab-key-v1';
   window.addEventListener('message', async event => {
     const data = event.data;
