@@ -237,6 +237,7 @@ async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?
     setTimeout,
     clearTimeout,
     URL,
+    structuredClone,
     window,
     __kernelHarness: harness
   });
@@ -276,6 +277,40 @@ function emitStableL2Flow(harness, { currentId = CURRENT_L2_ID, stableId = STABL
     });
   };
 }
+
+test('grader snapshot fetches stable L1/current without generating or applying feedback', async () => {
+  const { harness, kernel } = await loadKernelHarness();
+  emitStableL2Flow(harness);
+  const snapshot = await kernel.prepareGradingSnapshot();
+  assert.equal(snapshot.reviewActionId, CURRENT_L2_ID);
+  assert.equal(snapshot.original.actionId, STABLE_L1_ID);
+  assert.equal(snapshot.current.actionId, CURRENT_L2_ID);
+  assert.equal(harness.backendCalls.length, 0);
+  assert.equal(harness.appliedFeedback.length, 0);
+  snapshot.original.annotations[0].content = 'mutated external copy';
+  const fresh = await kernel.prepareGradingSnapshot();
+  assert.equal(fresh.original.annotations[0].content, 'content-1');
+});
+
+test('grader snapshot rejects navigation while the baseline is being fetched', async () => {
+  const { harness, kernel, context } = await loadKernelHarness();
+  emitStableL2Flow(harness);
+  const fetchAction = harness.onFetchReviewAction;
+  harness.onFetchReviewAction = (id, bridge) => {
+    fetchAction(id, bridge);
+    if (id === STABLE_L1_ID) context.window.location.href += '&changed=true';
+  };
+  await assert.rejects(kernel.prepareGradingSnapshot(), /review changed/);
+  assert.equal(harness.appliedFeedback.length, 0);
+});
+
+test('grader rediscovers a new current review when the URL has no action id', async () => {
+  const { harness, kernel } = await loadKernelHarness({ href: 'https://dashboard.babel.audio/review' });
+  emitStableL2Flow(harness);
+  assert.equal((await kernel.prepareGradingSnapshot()).reviewActionId, CURRENT_L2_ID);
+  emitStableL2Flow(harness, { currentId: SECOND_CURRENT_L2_ID });
+  assert.equal((await kernel.prepareGradingSnapshot()).reviewActionId, SECOND_CURRENT_L2_ID);
+});
 
 test('Magic Review discovers current L2 without a URL reviewActionId and ignores stale stored state', async () => {
   const { harness } = await loadKernelHarness({

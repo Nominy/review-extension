@@ -1,5 +1,6 @@
 import { createReviewKernel } from '../core/kernel';
 import { registerLifecycle } from '../core/lifecycle';
+import { registerGraderAddon } from '../services/grader-addon-service';
 
 async function boot(): Promise<void> {
   if (window.__babelReviewKernelInstalled) {
@@ -9,6 +10,7 @@ async function boot(): Promise<void> {
   window.__babelReviewKernelInstalled = true;
   const kernel = createReviewKernel();
   await kernel.start();
+  registerGraderAddon(kernel);
   registerLifecycle(kernel);
 }
 
