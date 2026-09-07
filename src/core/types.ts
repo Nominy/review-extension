@@ -6,6 +6,7 @@
 }
 
 export interface CapturedNetworkEntry {
+  recordingAudioUrls?: Record<string, string>;
   transport: 'fetch' | 'xhr';
   endpoint: string;
   method: string;
@@ -36,6 +37,9 @@ export interface ReviewAnnotation {
 }
 
 export interface ReviewRecording {
+  processedRecordingUrl?: string;
+  processedRecordingUri?: string;
+  chunkedProcessedRecordingId?: string;
   id: string;
   transcriptionChunkId: string;
   processedRecordingId: string;

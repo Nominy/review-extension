@@ -89,6 +89,7 @@ function normalizeAnnotations(raw: Record<string, unknown>): ReviewAnnotation[] 
 }
 
 function normalizeRecordings(raw: Record<string, unknown>): ReviewRecording[] {
+  const uriMap = raw.processedRecordingUriMap && typeof raw.processedRecordingUriMap === 'object' ? raw.processedRecordingUriMap as Record<string, unknown> : {};
   const recordingsRaw = Array.isArray(raw.transcriptionChunkProcessedRecordings)
     ? raw.transcriptionChunkProcessedRecordings
     : [];
@@ -100,6 +101,9 @@ function normalizeRecordings(raw: Record<string, unknown>): ReviewRecording[] {
         id: typeof record.id === 'string' ? record.id : '',
         transcriptionChunkId: typeof record.transcriptionChunkId === 'string' ? record.transcriptionChunkId : '',
         processedRecordingId: typeof record.processedRecordingId === 'string' ? record.processedRecordingId : '',
+        chunkedProcessedRecordingId: typeof record.chunkedProcessedRecordingId === 'string' ? record.chunkedProcessedRecordingId : undefined,
+        processedRecordingUri: typeof uriMap[String(record.chunkedProcessedRecordingId || record.processedRecordingId)] === 'string' ? uriMap[String(record.chunkedProcessedRecordingId || record.processedRecordingId)] as string : undefined,
+        processedRecordingUrl: audioUrl(record.processedRecordingUrl) || audioUrl(uriMap[String(record.chunkedProcessedRecordingId || record.processedRecordingId)]) || undefined,
         speaker: toNumber(record.speaker),
         startTimeInSeconds: toNumber(record.startTimeInSeconds),
         endTimeInSeconds: toNumber(record.endTimeInSeconds)
@@ -157,9 +161,22 @@ export function extractNormalizedFromEntry(entry: CapturedNetworkEntry): Normali
         : frame;
     const rawPayload = deepFindPayload(node);
     if (rawPayload) {
-      return normalizePayload(rawPayload, entry.capturedAt);
+      const normalized = normalizePayload(rawPayload, entry.capturedAt);
+      for (const recording of normalized.recordings) {
+        const resolved = audioUrl(entry.recordingAudioUrls?.[recording.processedRecordingUri || '']);
+        if (resolved) recording.processedRecordingUrl = resolved;
+      }
+      return normalized;
     }
   }
 
   return null;
+}
+
+export function audioUrl(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  try {
+    const url = new URL(value);
+    return !url.username && !url.password && (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) ? url.href : '';
+  } catch { return ''; }
 }

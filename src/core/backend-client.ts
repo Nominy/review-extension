@@ -1,3 +1,4 @@
+import { keyedRequest } from './review-key';
 import { createJsonClient, normalizeBaseUrl } from '@nominy/babel-extension-frontend';
 import type {
   BabelDiffPayload,
@@ -46,7 +47,7 @@ function getClient(primary: string, fallbacks: string[]) {
 }
 
 export async function generate(args: RequestBase): Promise<GeneratedReviewResponse> {
-  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<GeneratedReviewResponse>('/api/review/generate', {
+  return keyedRequest<GeneratedReviewResponse>(args.backendBaseUrl, '/api/review/generate', {
     reviewActionId: args.reviewActionId,
     original: args.original,
     current: args.current,
@@ -73,7 +74,7 @@ export async function submitTranscriptReviewActionAnalytics(
 }
 
 export async function createReviewSession(args: RequestBase): Promise<ReviewSessionCreateResponse> {
-  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionCreateResponse>('/api/review/sessions', {
+  return keyedRequest<ReviewSessionCreateResponse>(args.backendBaseUrl, '/api/review/sessions', {
     reviewActionId: args.reviewActionId,
     original: args.original,
     current: args.current,
@@ -157,7 +158,7 @@ export async function generateReviewSessionSuggestions(
     sessionId: string;
   }
 ): Promise<ReviewSessionData> {
-  return getClient(args.backendBaseUrl, args.backendBaseUrlFallbacks).post<ReviewSessionData>(
+  return keyedRequest<ReviewSessionData>(args.backendBaseUrl,
     `/api/review/sessions/${encodeURIComponent(args.sessionId)}/template-suggestions`,
     {}
   );

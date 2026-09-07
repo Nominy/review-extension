@@ -27,6 +27,12 @@ async function configureReview(page, babel, workflowMode = 'fast', overrides = {
   await expect(page.getByText('L1 Feedback Form', { exact: true })).toBeVisible();
   await expect(page.locator(FEEDBACK)).toHaveCount(5);
   await expect(page.locator(MAGIC)).toBeEnabled();
+  const keySettings = await babel.options('review');
+  await keySettings.getByRole('textbox', { name: 'OpenRouter API key' }).fill('sk-or-review-browser-fixture');
+  await keySettings.getByRole('button', { name: 'Save key', exact: true }).click();
+  await expect(keySettings.getByText('Saved key ending ture.', { exact: false })).toBeVisible();
+  await keySettings.close();
+  await expect(page.getByRole('button', { name: 'OpenRouter', exact: true })).toHaveCount(0);
 }
 
 async function configureSuggestionReview(page, babel) {

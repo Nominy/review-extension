@@ -78,6 +78,7 @@ const config = defineExtensionBuild({
     }
   },
   tasks: [
+    { entryPoints: ['src/content/lab-key.ts'], outfile: resolve(distDir, 'content', 'lab-key.js') },
     {
       entryPoints: ['src/content/entry.ts'],
       outfile: resolve(distDir, 'content', 'entry.js')

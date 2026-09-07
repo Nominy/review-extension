@@ -8,7 +8,9 @@ import {
   EVENT_SOURCE,
   EVENT_TRANSCRIPTION_DIFF_FETCHED
 } from '../core/constants';
-import { parseMaybeJson, parseTrpcFrameStream } from '../parsers/review-action-parser';
+import { extractNormalizedFromEntry, parseMaybeJson, parseTrpcFrameStream } from '../parsers/review-action-parser';
+import type { CapturedNetworkEntry } from '../core/types';
+import { enrichRecordingUrls } from '../parsers/recording-audio';
 
 const CLAIM_NEEDLE = 'claimNextReviewActionFromReviewQueue';
 const REVIEW_DATA_NEEDLE = 'getReviewActionDataById';
@@ -176,6 +178,15 @@ function detectEndpoint(url: string): string {
 }
 
 function postPayload(type: string, payload: unknown): void {
+  if (type === EVENT_REVIEW_ACTION_CAPTURED && extractNormalizedFromEntry(payload as CapturedNetworkEntry)?.recordings.some(recording => recording.processedRecordingUri)) {
+    void enrichRecordingUrls(payload as CapturedNetworkEntry, originalFetch).then(enriched => sendPayload(type, enriched));
+    return;
+  }
+  sendPayload(type, payload);
+}
+
+
+function sendPayload(type: string, payload: unknown): void {
   window.postMessage(
     {
       source: EVENT_SOURCE,
