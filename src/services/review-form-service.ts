@@ -1,3 +1,4 @@
+import { ensureUiStyles, themeRoot, applyComponent } from '@nominy/babel-extension-frontend';
 import {
   MAGIC_BUTTON_ID,
   MAGIC_STYLE_ID,
@@ -49,117 +50,21 @@ function findHeading(container: HTMLElement, text: string): HTMLElement | null {
 }
 
 function ensureStyles(): void {
-  if (document.getElementById(MAGIC_STYLE_ID)) {
-    return;
+    ensureUiStyles();
+    if (document.getElementById(MAGIC_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = MAGIC_STYLE_ID;
+    style.textContent = `
+      #${MAGIC_BUTTON_ID} { margin: 4px 0 4px 8px; }
+      #${MAGIC_BUTTON_ID} .babel-review-magic-spinner { display: none; }
+      #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-spinner { display: inline-block; }
+      #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-icon { display: none; }
+      #${TOAST_ID} { position: fixed; right: 18px; bottom: 18px; }
+      #${TOAST_ID}.babel-toast-out { opacity: 0; transition: opacity 220ms ease; }
+      .babel-toast-bar { display: none; }
+    `;
+    document.documentElement.appendChild(style);
   }
-
-  const style = document.createElement("style");
-  style.id = MAGIC_STYLE_ID;
-  style.textContent = `
-    #${MAGIC_BUTTON_ID} {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      border: 1px solid #f97316;
-      background: #f97316;
-      color: #ffffff;
-      border-radius: 6px;
-      padding: 7px 12px;
-      font: 600 13px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      cursor: pointer;
-      margin-left: 8px;
-      margin-right: 0;
-      margin-top: 4px;
-      margin-bottom: 4px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-    }
-    #${MAGIC_BUTTON_ID}:hover {
-      background: #ea580c;
-      border-color: #ea580c;
-    }
-    #${MAGIC_BUTTON_ID}:active {
-      background: #c2410c;
-      border-color: #c2410c;
-      box-shadow: none;
-    }
-    #${MAGIC_BUTTON_ID}[data-state="loading"] {
-      opacity: 0.88;
-      cursor: wait;
-      background: #fdba74;
-      border-color: #fdba74;
-    }
-    #${MAGIC_BUTTON_ID}[data-state="done"] {
-      border-color: #16a34a;
-      background: #16a34a;
-      color: #ffffff;
-    }
-    #${MAGIC_BUTTON_ID}[data-state="error"] {
-      border-color: #b91c1c;
-      background: #b91c1c;
-      color: #ffffff;
-    }
-    #${MAGIC_BUTTON_ID} .babel-review-magic-icon {
-      font-size: 15px;
-      line-height: 1;
-    }
-    #${MAGIC_BUTTON_ID} .babel-review-magic-spinner {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      border: 2px solid currentColor;
-      border-right-color: transparent;
-      display: none;
-    }
-    #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-spinner {
-      display: inline-block;
-      animation: babel-review-spin 0.7s linear infinite;
-    }
-    #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-icon { display: none; }
-    @keyframes babel-review-spin {
-      to { transform: rotate(360deg); }
-    }
-    #${TOAST_ID} {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      z-index: 2147483647;
-      max-width: 380px;
-      padding: 0;
-      border-radius: 12px;
-      font: 600 12.5px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      color: #fff;
-      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.10);
-      overflow: hidden;
-      animation: babel-review-toast-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
-      pointer-events: auto;
-    }
-    #${TOAST_ID} .babel-toast-content {
-      padding: 10px 14px;
-    }
-    #${TOAST_ID} .babel-toast-bar {
-      height: 3px;
-      background: rgba(255, 255, 255, 0.35);
-      animation: babel-review-toast-bar 3s linear forwards;
-    }
-    #${TOAST_ID}.babel-toast-out {
-      animation: babel-review-toast-out 220ms ease-in forwards;
-    }
-    @keyframes babel-review-toast-in {
-      from { opacity: 0; transform: translateY(12px) scale(0.96); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    @keyframes babel-review-toast-out {
-      from { opacity: 1; transform: translateY(0) scale(1); }
-      to { opacity: 0; transform: translateY(8px) scale(0.97); }
-    }
-    @keyframes babel-review-toast-bar {
-      from { width: 100%; }
-      to { width: 0%; }
-    }
-  `;
-  document.documentElement.appendChild(style);
-}
 
 function setNativeValue(element: HTMLTextAreaElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(
@@ -223,11 +128,13 @@ export function createReviewFormService(): MagicButtonController {
 
       const button = document.createElement("button");
       button.id = MAGIC_BUTTON_ID;
+      themeRoot(button, 'orange');
+      applyComponent(button, 'button', { variant: 'primary' });
       button.type = "button";
       button.dataset.state = "idle";
       button.innerHTML = `
         <span class="babel-review-magic-icon">\u{1FA84}</span>
-        <span class="babel-review-magic-spinner"></span>
+        <span class="babel-review-magic-spinner bui-spinner"></span>
         <span class="babel-review-magic-label">Magic Review</span>
       `;
       button.addEventListener("click", () => {
@@ -280,9 +187,9 @@ export function createReviewFormService(): MagicButtonController {
 
       const holder = document.createElement("div");
       holder.id = TOAST_ID;
-      holder.style.background = isError
-        ? "linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)"
-        : "linear-gradient(135deg, #166534 0%, #15803d 100%)";
+      themeRoot(holder, 'orange');
+      applyComponent(holder, 'toast', { tone: isError ? 'danger' : 'success' });
+      holder.setAttribute('role', isError ? 'alert' : 'status');
       holder.innerHTML = `<div class="babel-toast-content"></div><div class="babel-toast-bar"></div>`;
       const content = holder.querySelector<HTMLElement>(".babel-toast-content");
       if (content) {

@@ -1,4 +1,7 @@
+import { createReactComponents } from '@nominy/babel-extension-frontend';
 import React, { useEffect, useState } from 'react';
+
+const Ui = createReactComponents(React.createElement);
 import { createRoot } from 'react-dom/client';
 import { DEFAULT_SETTINGS, RUNTIME_POLICY, sanitizeSettings } from '../core/runtime-config';
 import { loadState, saveState } from '../core/storage';
@@ -61,21 +64,21 @@ function OptionsApp() {
   }
 
   return (
-    <div className="br-page">
-      <div className="br-page-shell" style={{ maxWidth: 640 }}>
-        <div className="br-shell-surface">
-          <div className="br-header">
+    <Ui.Page as="div" accent="orange" className="br-page">
+      <Ui.SettingsShell as="div" className="br-page-shell">
+        <Ui.Surface as="div" className="br-shell-surface">
+          <Ui.Header as="div" className="br-header">
             <div>
-              <div className="br-header-title">Babel Review settings</div>
-              <div className="br-header-status" data-error={error}>{status}</div>
+              <Ui.Title as="div" className="br-header-title">Babel Review settings</Ui.Title>
+              <Ui.Status as="div" className="br-header-status" data-error={error}>{status}</Ui.Status>
             </div>
-          </div>
-          <div className="br-main">
-            <div className="br-stack">
-              <div className="br-block">
-                <label className="br-label" htmlFor="workflowMode">Default workflow</label>
+          </Ui.Header>
+          <Ui.Body as="div" className="br-main">
+            <Ui.Stack as="div" className="br-stack">
+              <Ui.Card as="div" className="br-block">
+                <Ui.Label as="label" className="br-label" htmlFor="workflowMode">Default workflow</Ui.Label>
                 <select
-                  className="br-select"
+                  className="br-select bui-select"
                   id="workflowMode"
                   onChange={(event) => setWorkflowMode(event.target.value === 'fast' ? 'fast' : 'interactive')}
                   value={workflowMode}
@@ -83,46 +86,46 @@ function OptionsApp() {
                   <option value="interactive">Interactive review session</option>
                   <option value="fast">Fast route</option>
                 </select>
-              </div>
+              </Ui.Card>
 
-              <div className="br-block">
-                <label className="br-label" htmlFor="backendBaseUrl">Primary backend URL</label>
+              <Ui.Card as="div" className="br-block">
+                <Ui.Label as="label" className="br-label" htmlFor="backendBaseUrl">Primary backend URL</Ui.Label>
                 {RUNTIME_POLICY.allowBackendOverrides ? (
                   <input
-                    className="br-input"
+                    className="br-input bui-input"
                     id="backendBaseUrl"
                     onChange={(event) => setBackendBaseUrl(event.target.value)}
                     type="url"
                     value={backendBaseUrl}
                   />
                 ) : (
-                  <div className="br-readonly-value">{backendBaseUrl}</div>
+                  <Ui.Card as="div" className="br-readonly-value">{backendBaseUrl}</Ui.Card>
                 )}
-              </div>
+              </Ui.Card>
 
               {RUNTIME_POLICY.allowBackendOverrides ? (
-                <div className="br-block">
-                  <label className="br-label" htmlFor="backendFallbacks">Fallback backend URLs</label>
+                <Ui.Card as="div" className="br-block">
+                  <Ui.Label as="label" className="br-label" htmlFor="backendFallbacks">Fallback backend URLs</Ui.Label>
                   <textarea
-                    className="br-textarea"
+                    className="br-textarea bui-textarea"
                     id="backendFallbacks"
                     onChange={(event) => setBackendFallbacks(event.target.value)}
                     value={backendFallbacks}
                   />
-                </div>
+                </Ui.Card>
               ) : (
-                <div className="br-block">
-                  <div className="br-label">Backend configuration</div>
-                  <div className="br-helper">
+                <Ui.Card as="div" className="br-block">
+                  <Ui.Label as="div" className="br-label">Backend configuration</Ui.Label>
+                  <Ui.Hint as="div" className="br-helper">
                     This Chrome Web Store build is locked to the production backend.
-                  </div>
-                </div>
+                  </Ui.Hint>
+                </Ui.Card>
               )}
 
-              <div className="br-block">
-                <label className="br-label" htmlFor="refreshTimeoutMs">Refresh timeout (ms)</label>
+              <Ui.Card as="div" className="br-block">
+                <Ui.Label as="label" className="br-label" htmlFor="refreshTimeoutMs">Refresh timeout (ms)</Ui.Label>
                 <input
-                  className="br-input"
+                  className="br-input bui-input"
                   id="refreshTimeoutMs"
                   min="1000"
                   onChange={(event) => setRefreshTimeoutMs(event.target.value)}
@@ -130,11 +133,11 @@ function OptionsApp() {
                   type="number"
                   value={refreshTimeoutMs}
                 />
-              </div>
+              </Ui.Card>
 
-              <div className="br-inline-actions">
+              <Ui.Row as="div" className="br-inline-actions">
                 <button
-                  className="br-button"
+                  className="br-button bui-button"
                   data-variant="primary"
                   onClick={() =>
                     void persist().catch((nextError) => {
@@ -147,7 +150,7 @@ function OptionsApp() {
                   Save
                 </button>
                 <button
-                  className="br-button"
+                  className="br-button bui-button"
                   data-variant="ghost"
                   onClick={() =>
                     void reset().catch((nextError) => {
@@ -159,11 +162,11 @@ function OptionsApp() {
                 >
                   Reset defaults
                 </button>
-              </div>
-              <div className="br-block">
-                <div className="br-helper">
+              </Ui.Row>
+              <Ui.Card as="div" className="br-block">
+                <Ui.Hint as="div" className="br-helper">
                   These Babel tools are maintained by Naftsan;{' '}
-                  <a
+                  <Ui.Button as="a"
                     className="br-button"
                     data-size="sm"
                     data-variant="ghost"
@@ -172,14 +175,14 @@ function OptionsApp() {
                     target="_blank"
                   >
                     if this extension saves you time, consider supporting development on Ko-Fi
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+                  </Ui.Button>
+                </Ui.Hint>
+              </Ui.Card>
+            </Ui.Stack>
+          </Ui.Body>
+        </Ui.Surface>
+      </Ui.SettingsShell>
+    </Ui.Page>
   );
 }
 

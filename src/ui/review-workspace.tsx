@@ -1,4 +1,7 @@
+import { createReactComponents } from '@nominy/babel-extension-frontend';
 import React, { memo, useEffect, useMemo, useState } from 'react';
+
+const Ui = createReactComponents(React.createElement);
 import type { ReviewEvidence, ReviewSessionData, ReviewSessionSuggestion } from '../core/types';
 import type { ReviewWorkspaceStore, TemplateSearchState } from './review-workspace-store';
 import {
@@ -75,25 +78,25 @@ function renderEvidenceBlock(card: ReviewSessionData['cards'][number]) {
 
   if (evidence.kind === 'text-diff') {
     return (
-      <div className="br-diff-view">
-        <div className="br-diff-pane">
-          <div className="br-diff-label">Before</div>
-          <div className="br-diff-content">{evidence.before || '(empty)'}</div>
-        </div>
-        <div className="br-diff-pane">
-          <div className="br-diff-label">After</div>
-          <div className="br-diff-content">{evidence.after || '(empty)'}</div>
-          {evidence.inlineDiff ? <div className="br-meta" style={{marginTop: 4}}>{evidence.inlineDiff}</div> : null}
-        </div>
-      </div>
+      <Ui.Diff as="div" className="br-diff-view">
+        <Ui.DiffPane as="div" className="br-diff-pane">
+          <Ui.DiffLabel as="div" className="br-diff-label">Before</Ui.DiffLabel>
+          <Ui.DiffText as="div" className="br-diff-content">{evidence.before || '(empty)'}</Ui.DiffText>
+        </Ui.DiffPane>
+        <Ui.DiffPane as="div" className="br-diff-pane">
+          <Ui.DiffLabel as="div" className="br-diff-label">After</Ui.DiffLabel>
+          <Ui.DiffText as="div" className="br-diff-content">{evidence.after || '(empty)'}</Ui.DiffText>
+          {evidence.inlineDiff ? <Ui.Meta as="div" className="br-meta" style={{marginTop: 4}}>{evidence.inlineDiff}</Ui.Meta> : null}
+        </Ui.DiffPane>
+      </Ui.Diff>
     );
   }
 
   return (
-    <div className="br-block">
-      <div className="br-label">Evidence</div>
+    <Ui.Card as="div" className="br-block">
+      <Ui.Label as="div" className="br-label">Evidence</Ui.Label>
       <div style={{fontFamily: 'monospace', fontSize: '11px'}}>{evidence.text}</div>
-    </div>
+    </Ui.Card>
   );
 }
 
@@ -123,9 +126,9 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
 
   if (!props.open) {
     return (
-      <div className="br-inline-actions">
+      <Ui.Row as="div" className="br-inline-actions">
         <button
-          className="br-button"
+          className="br-button bui-button"
           data-size="sm"
           disabled={props.busy}
           onClick={props.onToggleOpen}
@@ -133,25 +136,25 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
         >
           {props.card.matchedTemplateId ? 'Change template' : 'Match template'}
         </button>
-      </div>
+      </Ui.Row>
     );
   }
 
   return (
-    <div className="br-block">
-      <div className="br-label">Template match</div>
+    <Ui.Card as="div" className="br-block">
+      <Ui.Label as="div" className="br-label">Template match</Ui.Label>
       <div className="br-body">
         <div><strong>{props.card.templateTitle || props.card.matchedTemplateId || 'No template selected'}</strong></div>
-        <div className="br-meta">
+        <Ui.Meta as="div" className="br-meta">
           {describeMatchSource(props.card)}
           {props.card.matchedTemplateId ? ` · ${props.card.matchedTemplateId}` : ''}
-        </div>
-        {previousTemplate ? <div className="br-meta">Originally matched: {previousTemplate}</div> : null}
+        </Ui.Meta>
+        {previousTemplate ? <Ui.Meta as="div" className="br-meta">Originally matched: {previousTemplate}</Ui.Meta> : null}
         
-        <div className="br-stack" style={{marginTop: 8}}>
+        <Ui.Stack as="div" className="br-stack" style={{marginTop: 8}}>
           <input
             id={`template-search-${props.cardId}`}
-            className="br-input"
+            className="br-input bui-input"
             disabled={props.busy}
             onChange={(event) => {
               const value = event.target.value;
@@ -163,22 +166,22 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
             type="text"
             value={localQuery}
           />
-          {props.searchState.loading ? <div className="br-helper">Searching templates...</div> : null}
+          {props.searchState.loading ? <Ui.Hint as="div" className="br-helper">Searching templates...</Ui.Hint> : null}
           {!props.searchState.loading && props.searchState.error ? (
-            <div className="br-helper" style={{ color: 'var(--br-danger)' }}>{props.searchState.error}</div>
+            <Ui.Hint as="div" className="br-helper" style={{ color: 'var(--bui-danger)' }}>{props.searchState.error}</Ui.Hint>
           ) : null}
           {props.searchState.results.length ? (
-            <div className="br-search-results" style={{maxHeight: '200px', overflowY: 'auto'}}>
+            <Ui.Stack as="div" className="br-search-results" style={{maxHeight: '200px', overflowY: 'auto'}}>
               {props.searchState.results.map((result) => (
-                <div className="br-search-result" key={result.id}>
-                  <div className="br-row-top">
-                    <div className="br-row-title">{result.title}</div>
-                    <span className="br-badge" data-variant="warning">{result.category}</span>
-                  </div>
-                  <div className="br-meta" style={{fontSize: '11px'}}>{result.description}</div>
-                  <div className="br-inline-actions" style={{marginTop: 4}}>
+                <Ui.Card as="div" className="br-search-result" key={result.id}>
+                  <Ui.Row as="div" className="br-row-top">
+                    <Ui.Title as="div" className="br-row-title">{result.title}</Ui.Title>
+                    <Ui.Badge as="span" className="br-badge" data-variant="warning">{result.category}</Ui.Badge>
+                  </Ui.Row>
+                  <Ui.Meta as="div" className="br-meta" style={{fontSize: '11px'}}>{result.description}</Ui.Meta>
+                  <Ui.Row as="div" className="br-inline-actions" style={{marginTop: 4}}>
                     <button
-                      className="br-button"
+                      className="br-button bui-button"
                       data-variant="primary"
                       data-size="sm"
                       disabled={props.busy}
@@ -187,18 +190,18 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
                     >
                       Select
                     </button>
-                  </div>
-                </div>
+                  </Ui.Row>
+                </Ui.Card>
               ))}
-            </div>
+            </Ui.Stack>
           ) : !props.searchState.loading && props.searchState.query ? (
-             <div className="br-helper">No results.</div>
+             <Ui.Hint as="div" className="br-helper">No results.</Ui.Hint>
           ) : null}
-        </div>
+        </Ui.Stack>
 
-        <div className="br-inline-actions" style={{marginTop: 8}}>
+        <Ui.Row as="div" className="br-inline-actions" style={{marginTop: 8}}>
           <button
-            className="br-button"
+            className="br-button bui-button"
             data-variant="danger"
             data-size="sm"
             disabled={props.busy || !props.card.matchedTemplateId}
@@ -208,7 +211,7 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
             Remove match
           </button>
           <button
-            className="br-button"
+            className="br-button bui-button"
             data-variant="ghost"
             data-size="sm"
             disabled={props.busy}
@@ -217,9 +220,9 @@ const TemplateSearchPanel = memo(function TemplateSearchPanel(props: {
           >
             Cancel
           </button>
-        </div>
+        </Ui.Row>
       </div>
-    </div>
+    </Ui.Card>
   );
 });
 
@@ -243,19 +246,19 @@ const ReviewCard = memo(function ReviewCard(props: {
   const setTemplateSearchOpen = useReviewWorkspaceSelector((state) => state.setTemplateSearchOpen);
 
   return (
-    <div className="br-card">
+    <Ui.Panel as="div" className="br-card">
       <div className="br-card-header" onClick={() => toggleExpandedRow(cardId)}>
-        <div className="br-row-top">
-          <div className="br-row-main">
-            <span className="br-pill-dot" data-variant={props.card.matchedTemplateId ? 'matched' : 'unmatched'} />
-            <div className="br-row-title">
+        <Ui.Row as="div" className="br-row-top">
+          <Ui.Row as="div" className="br-row-main">
+            <Ui.Dot as="span" className="br-pill-dot" data-variant={props.card.matchedTemplateId ? 'matched' : 'unmatched'} />
+            <Ui.Title as="div" className="br-row-title">
               #{props.card.changeIndex}: {deriveSummary(props.card)}
-            </div>
-          </div>
+            </Ui.Title>
+          </Ui.Row>
           <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
             {props.card.matchedTemplateId ? (
               <button
-                className="br-button"
+                className="br-button bui-button"
                 data-variant="danger"
                 data-size="sm"
                 disabled={props.busy}
@@ -268,24 +271,24 @@ const ReviewCard = memo(function ReviewCard(props: {
                 Remove match
               </button>
             ) : null}
-            <span className="br-badge" data-variant="warning">{props.card.type || 'UNKNOWN'}</span>
-            <span style={{fontSize: '12px', color: 'var(--br-faint)'}}>{expanded ? '▲' : '▼'}</span>
+            <Ui.Badge as="span" className="br-badge" data-variant="warning">{props.card.type || 'UNKNOWN'}</Ui.Badge>
+            <span style={{fontSize: '12px', color: 'var(--bui-faint)'}}>{expanded ? '▲' : '▼'}</span>
           </div>
-        </div>
+        </Ui.Row>
         {!expanded && (
-           <div className="br-meta" style={{paddingLeft: '16px'}}>
+           <Ui.Meta as="div" className="br-meta" style={{paddingLeft: '16px'}}>
              {props.card.templateTitle || 'No template selected'}
-           </div>
+           </Ui.Meta>
         )}
       </div>
       {expanded && (
-        <div className="br-card-body">
+        <Ui.Body as="div" className="br-card-body">
           {(props.card.opinionText || props.card.rationale) && (
-            <div className="br-opinion-box">
-              <div className="br-label" style={{color: '#92400e', marginBottom: 2}}>System Opinion</div>
+            <Ui.Notice as="div" tone="warning" className="br-opinion-box">
+              <Ui.Label as="div" className="br-label" style={{color: '#92400e', marginBottom: 2}}>System Opinion</Ui.Label>
               <div>{props.card.opinionText}</div>
-              {props.card.rationale && <div className="br-opinion-rationale">{props.card.rationale}</div>}
-            </div>
+              {props.card.rationale && <Ui.Hint as="div" className="br-opinion-rationale">{props.card.rationale}</Ui.Hint>}
+            </Ui.Notice>
           )}
 
           {renderEvidenceBlock(props.card)}
@@ -302,10 +305,10 @@ const ReviewCard = memo(function ReviewCard(props: {
             searchState={searchState}
           />
 
-          <div className="br-block">
-            <div className="br-label">Reviewer comment</div>
+          <Ui.Card as="div" className="br-block">
+            <Ui.Label as="div" className="br-label">Reviewer comment</Ui.Label>
             <textarea
-              className="br-textarea"
+              className="br-textarea bui-textarea"
               disabled={props.busy}
               onChange={(event) => {
                 const value = event.target.value;
@@ -315,10 +318,10 @@ const ReviewCard = memo(function ReviewCard(props: {
               placeholder="Explain what should be different..."
               value={comment}
             />
-          </div>
-        </div>
+          </Ui.Card>
+        </Ui.Body>
       )}
-    </div>
+    </Ui.Panel>
   );
 });
 
@@ -328,32 +331,32 @@ const SuggestionsList = memo(function SuggestionsList(props: {
   onDecision: (proposalId: string, decision: 'approved' | 'rejected') => void;
 }) {
   if (!props.suggestions.length) {
-    return <div className="br-empty">No template suggestions yet.</div>;
+    return <Ui.Empty as="div" className="br-empty">No template suggestions yet.</Ui.Empty>;
   }
 
   return (
-    <div className="br-suggestions">
+    <Ui.Stack as="div" className="br-suggestions">
       {props.suggestions.map((suggestion) => {
         const decision = suggestion.decision || 'pending';
         return (
-          <div className="br-suggestion" key={suggestion.proposalId}>
-            <div className="br-suggestion-top" style={{marginBottom: 8}}>
-              <span className="br-badge" data-variant="primary">{suggestion.operation}</span>
-              <span className="br-badge" data-variant="warning">{suggestion.category}</span>
-              <span className="br-meta">{decision}</span>
-            </div>
-            <div className="br-suggestion-title">{suggestion.title || suggestion.targetTemplateId || 'Untitled suggestion'}</div>
+          <Ui.Card as="div" className="br-suggestion" key={suggestion.proposalId}>
+            <Ui.Row as="div" className="br-suggestion-top" style={{marginBottom: 8}}>
+              <Ui.Badge as="span" className="br-badge" data-variant="primary">{suggestion.operation}</Ui.Badge>
+              <Ui.Badge as="span" className="br-badge" data-variant="warning">{suggestion.category}</Ui.Badge>
+              <Ui.Meta as="span" className="br-meta">{decision}</Ui.Meta>
+            </Ui.Row>
+            <Ui.Title as="div" className="br-suggestion-title">{suggestion.title || suggestion.targetTemplateId || 'Untitled suggestion'}</Ui.Title>
             {suggestion.description ? <div style={{marginTop: 4, fontSize: '12px'}}>{suggestion.description}</div> : null}
-            <div className="br-meta" style={{marginTop: 4}}>Reason: {suggestion.reason}</div>
+            <Ui.Meta as="div" className="br-meta" style={{marginTop: 4}}>Reason: {suggestion.reason}</Ui.Meta>
             {Array.isArray(suggestion.reportTexts) && suggestion.reportTexts.length ? (
-              <div className="br-block" style={{marginTop: 8}}>
-                <div className="br-label">Proposed text</div>
+              <Ui.Card as="div" className="br-block" style={{marginTop: 8}}>
+                <Ui.Label as="div" className="br-label">Proposed text</Ui.Label>
                 <div style={{fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre-wrap'}}>{suggestion.reportTexts.join('\n\n')}</div>
-              </div>
+              </Ui.Card>
             ) : null}
-            <div className="br-inline-actions" style={{marginTop: 10}}>
+            <Ui.Row as="div" className="br-inline-actions" style={{marginTop: 10}}>
               <button
-                className="br-button"
+                className="br-button bui-button"
                 data-variant="primary"
                 data-size="sm"
                 disabled={props.busy || decision !== 'pending'}
@@ -363,7 +366,7 @@ const SuggestionsList = memo(function SuggestionsList(props: {
                 Approve
               </button>
               <button
-                className="br-button"
+                className="br-button bui-button"
                 data-variant="danger"
                 data-size="sm"
                 disabled={props.busy || decision !== 'pending'}
@@ -372,11 +375,11 @@ const SuggestionsList = memo(function SuggestionsList(props: {
               >
                 Reject
               </button>
-            </div>
-          </div>
+            </Ui.Row>
+          </Ui.Card>
         );
       })}
-    </div>
+    </Ui.Stack>
   );
 });
 
@@ -405,28 +408,28 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
 
   const content = (
     <div>
-      <div className="br-page-shell">
-        <div className="br-shell-surface">
-          <div className="br-header">
+      <Ui.PageShell as="div" className="br-page-shell">
+        <Ui.Surface as="div" className="br-shell-surface">
+          <Ui.Header as="div" className="br-header">
             <div>
-              <div className="br-header-title-row">
-                <div className="br-header-title">{title}</div>
-                <a
+              <Ui.Row as="div" className="br-header-title-row">
+                <Ui.Title as="div" className="br-header-title">{title}</Ui.Title>
+                <Ui.Link as="a"
                   className="br-support-link"
                   href="https://ko-fi.com/naftsan"
                   rel="noopener noreferrer"
                   target="_blank"
                 >
                   if this extension saves you time, consider supporting development on Ko-Fi
-                </a>
-              </div>
-              <div className="br-header-status" data-error={error}>
+                </Ui.Link>
+              </Ui.Row>
+              <Ui.Status as="div" className="br-header-status" data-error={error}>
                 {status}
-              </div>
+              </Ui.Status>
             </div>
-            <div className="br-toolbar">
+            <Ui.Row as="div" className="br-toolbar">
               <button
-                className="br-button"
+                className="br-button bui-button"
                 data-variant="ghost"
                 disabled={busy || !session}
                 onClick={() => props.onRefresh()}
@@ -435,7 +438,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                 Refresh
               </button>
               <button
-                className="br-button"
+                className="br-button bui-button"
                 data-variant="primary"
                 disabled={busy || !session}
                 onClick={() => props.onFinalize('apply')}
@@ -446,7 +449,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
               {props.onClose ? (
                 <button
                   aria-label={props.closeLabel || 'Close'}
-                  className="br-button"
+                  className="br-button bui-button"
                   data-variant="ghost"
                   disabled={busy}
                   onClick={props.onClose}
@@ -455,31 +458,36 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                   ×
                 </button>
               ) : null}
-            </div>
-          </div>
+            </Ui.Row>
+          </Ui.Header>
 
-          <div className="br-main">
+          <Ui.Body as="div" className="br-main">
+            {loading || busy ? (
+              <div className="bui-progress" data-indeterminate="true" role="progressbar" aria-label="Working">
+                <div className="bui-progress-fill" />
+              </div>
+            ) : null}
             {loading && !session ? (
-              <div className="br-empty">Preparing review session…</div>
+              <Ui.Empty as="div" className="br-empty">Preparing review session…</Ui.Empty>
             ) : null}
 
             {session ? (
               <>
-                <div className="br-summary-bar">
-                  <div className="br-summary-pill">
-                    <span className="br-summary-dot" />
+                <Ui.Row as="div" className="br-summary-bar">
+                  <Ui.Row as="div" className="br-summary-pill">
+                    <Ui.Dot as="span" className="br-summary-dot" />
                     <span>{session.cards.length} changes</span>
-                  </div>
+                  </Ui.Row>
                   <span>·</span>
                   <span>{matchedCount} matched</span>
                   <span>·</span>
                   <span>{session.suggestions.length} suggestions</span>
-                </div>
+                </Ui.Row>
 
-                <div className="br-toolbar-secondary" style={{marginTop: 4}}>
+                <Ui.Row as="div" className="br-toolbar-secondary" style={{marginTop: 4}}>
                   <div style={{display: 'flex', gap: '8px'}}>
                     <button
-                      className="br-button"
+                      className="br-button bui-button"
                       data-size="sm"
                       onClick={() => toggleAllRows(true)}
                       type="button"
@@ -487,7 +495,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                       Expand All
                     </button>
                     <button
-                      className="br-button"
+                      className="br-button bui-button"
                       data-size="sm"
                       onClick={() => toggleAllRows(false)}
                       type="button"
@@ -496,7 +504,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                     </button>
                   </div>
                   <button
-                    className="br-button"
+                    className="br-button bui-button"
                     data-variant="ghost"
                     data-size="sm"
                     disabled={busy || !session}
@@ -505,9 +513,9 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                   >
                     Rescan for suggestions
                   </button>
-                </div>
+                </Ui.Row>
 
-                <div className="br-stack">
+                <Ui.Stack as="div" className="br-stack">
                   {session.cards.length ? (
                     session.cards.map((card) => (
                       <ReviewCard
@@ -521,17 +529,17 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                       />
                     ))
                   ) : (
-                    <div className="br-empty">No changes were detected for this review.</div>
+                    <Ui.Empty as="div" className="br-empty">No changes were detected for this review.</Ui.Empty>
                   )}
-                </div>
+                </Ui.Stack>
 
-                <div className="br-divider" style={{margin: '16px 0'}} />
+                <Ui.Divider as="div" className="br-divider" style={{margin: '16px 0'}} />
 
                 <section>
-                  <div className="br-section-header">
-                    <div className="br-section-title">Improve the system ({session.suggestions.length})</div>
+                  <Ui.Row as="div" className="br-section-header">
+                    <Ui.Label as="div" className="br-section-title">Improve the system ({session.suggestions.length})</Ui.Label>
                     <button
-                      className="br-button"
+                      className="br-button bui-button"
                       data-variant="ghost"
                       data-size="sm"
                       onClick={toggleSuggestionsExpanded}
@@ -539,13 +547,13 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                     >
                       {suggestionsExpanded ? 'Hide' : 'Show'}
                     </button>
-                  </div>
+                  </Ui.Row>
                   {suggestionsExpanded ? (
-                    <div className="br-stack">
-                      <div className="br-block">
-                        <div className="br-label">General reviewer comment</div>
+                    <Ui.Stack as="div" className="br-stack">
+                      <Ui.Card as="div" className="br-block">
+                        <Ui.Label as="div" className="br-label">General reviewer comment</Ui.Label>
                         <textarea
-                          className="br-textarea"
+                          className="br-textarea bui-textarea"
                           disabled={busy}
                           onChange={(event) => {
                             const value = event.target.value;
@@ -555,19 +563,19 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                           placeholder="Optional note for the entire review session..."
                           value={sessionCommentDraft}
                         />
-                      </div>
+                      </Ui.Card>
                       <SuggestionsList
                         busy={busy}
                         onDecision={props.onSuggestionDecision}
                         suggestions={session.suggestions || []}
                       />
-                    </div>
+                    </Ui.Stack>
                   ) : null}
                 </section>
                 
                 <div style={{marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10}}>
                    <button
-                    className="br-button"
+                    className="br-button bui-button"
                     disabled={busy || !session}
                     onClick={() => props.onFinalize('skip')}
                     type="button"
@@ -575,7 +583,7 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                     Apply without review
                   </button>
                   <button
-                    className="br-button"
+                    className="br-button bui-button"
                     data-variant="primary"
                     disabled={busy || !session}
                     onClick={() => props.onFinalize('apply')}
@@ -586,23 +594,23 @@ function WorkspaceInner(props: Omit<ReviewWorkspaceProps, 'store'>) {
                 </div>
               </>
             ) : !loading ? (
-              <div className="br-empty">Session is not available.</div>
+              <Ui.Empty as="div" className="br-empty">Session is not available.</Ui.Empty>
             ) : null}
-          </div>
-        </div>
-      </div>
+          </Ui.Body>
+        </Ui.Surface>
+      </Ui.PageShell>
     </div>
   );
 
   return (
-    <div className="br-overlay-root">
-      <div className="br-overlay-backdrop" onClick={props.onBackdropClose || props.onClose} />
-      <div className="br-overlay-shell">
-        <div className="br-overlay-dialog" onClick={(event) => event.stopPropagation()}>
+    <Ui.Overlay as="div" accent="orange" className="br-overlay-root">
+      <div className="br-overlay-backdrop bui-backdrop" onClick={props.onBackdropClose || props.onClose} />
+      <Ui.DialogPosition as="div" className="br-overlay-shell">
+        <div className="br-overlay-dialog bui-dialog" onClick={(event) => event.stopPropagation()}>
           {content}
         </div>
-      </div>
-    </div>
+      </Ui.DialogPosition>
+    </Ui.Overlay>
   );
 }
 
