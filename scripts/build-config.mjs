@@ -94,6 +94,7 @@ export function createManifest(flavor = 'dev') {
     },
     options_page: 'options.html',
     content_scripts: [
+      { matches: ['https://reviewgen.ovh/templates-lab*', ...(flavor === 'dev' ? ['http://127.0.0.1/templates-lab*', 'http://localhost/templates-lab*'] : [])], js: ['dist/content/lab-key.js'], run_at: 'document_idle' },
       {
         matches: [...config.contentMatches],
         js: ['dist/content/entry.js'],

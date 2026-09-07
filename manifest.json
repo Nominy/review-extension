@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Babel Review Helper",
-  "version": "0.3.21",
+  "version": "0.3.22",
   "description": "Review helper for Babel transcription reviews with guided review sessions and one-click feedback application.",
   "permissions": [
     "storage"
@@ -33,6 +33,17 @@
       ],
       "js": [
         "dist/content/entry.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://reviewgen.ovh/templates-lab*",
+        "http://127.0.0.1/templates-lab*",
+        "http://localhost/templates-lab*"
+      ],
+      "js": [
+        "dist/content/lab-key.js"
       ],
       "run_at": "document_idle"
     }

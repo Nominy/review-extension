@@ -1,3 +1,4 @@
+import { mountKeyPanel } from '../ui/key-panel';
 import { createReactComponents } from '@nominy/babel-extension-frontend';
 import React, { useEffect, useState } from 'react';
 
@@ -14,6 +15,11 @@ function OptionsApp() {
   const [backendBaseUrl, setBackendBaseUrl] = useState(DEFAULT_SETTINGS.backendBaseUrl);
   const [backendFallbacks, setBackendFallbacks] = useState(DEFAULT_SETTINGS.backendBaseUrlFallbacks.join('\n'));
   const [refreshTimeoutMs, setRefreshTimeoutMs] = useState(String(DEFAULT_SETTINGS.refreshTimeoutMs));
+
+  useEffect(() => {
+    const host = document.getElementById('review-key-panel');
+    if (host && !host.children.length) mountKeyPanel(host, async () => (await loadState()).settings.backendBaseUrl);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -75,6 +81,7 @@ function OptionsApp() {
           </Ui.Header>
           <Ui.Body as="div" className="br-main">
             <Ui.Stack as="div" className="br-stack">
+              <div id="review-key-panel" />
               <Ui.Card as="div" className="br-block">
                 <Ui.Label as="label" className="br-label" htmlFor="workflowMode">Default workflow</Ui.Label>
                 <select

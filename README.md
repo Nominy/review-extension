@@ -94,3 +94,20 @@ To seed the GitHub Actions secrets from the local dotenv file, run `node scripts
 - `npm test`
 - `npm run build:release`
 - `npm run build:zip`
+
+## OpenRouter key and usage
+
+Save your key in **Review Helper settings** or in the
+Review Lab panel. These surfaces share one key in this extension's local storage
+on the same browser profile; changes apply to the next request without reloading.
+Gold Drafting keeps its own key. The Review Grader addon also uses Review Helper's key.
+Keys are kept separate from review settings/history and sent in `X-OpenRouter-Key`
+only to `https://reviewgen.ovh` or an HTTP loopback backend. Paid requests use the
+configured primary backend and are not automatically retried against fallbacks.
+**Check usage** shows spend and the remaining per-key limit, not account credits.
+Removing the key prevents further model calls from these clients.
+
+Reload the extension and refresh Babel and the Lab after updating. The development
+build supports a local Lab; the release build supports `https://reviewgen.ovh/templates-lab`.
+The Lab needs Review Helper installed to run model tests; prompt previews remain available.
+Deploy the accompanying backend changes before using the updated production extension.
