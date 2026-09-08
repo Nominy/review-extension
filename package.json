@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@nominy/babel-extension-build": "file:../../shared/babel-extension-platform/packages/babel-extension-build",
+    "@nominy/babel-extension-e2e": "file:../../shared/babel-extension-platform/packages/babel-extension-e2e",
     "@types/chrome": "^0.0.325",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

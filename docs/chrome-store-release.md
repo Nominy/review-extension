@@ -4,11 +4,9 @@
 
 This checklist is for the production-only `release` build that targets unlisted tester distribution through the Chrome Web Store.
 
-Interactive reviews use the in-page workspace on the Babel dashboard, with direct finalization when needed.
-
 ## Build
 
-1. Run `npm install`.
+1. Complete the [dependency installation](../README.md#install-and-build).
 2. Run `npm run typecheck`.
 3. Run `npm test`.
 4. Run `npm run build:release`.
@@ -20,7 +18,7 @@ Expected outputs:
 - `build/release/options.html`
 - `build/release/dist/...`
 - `build/release/icons/...`
-- `../babel-review-helper-0.3.0.zip`
+- `.artifacts/babel-review-helper-<version>.zip`
 
 ## Verify Before Upload
 
@@ -36,9 +34,9 @@ Expected outputs:
 
 ## Store Submission Materials
 
-- Use the listing copy from [chrome-store-listing.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-listing.md).
-- Use the disclosure summary from [chrome-store-data-disclosure.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/chrome-store-data-disclosure.md).
-- Publish the privacy policy from [privacy-policy.md](/C:/Users/User/Desktop/dev/babel/reviewer/review-interceptor-extension/docs/privacy-policy.md).
+- Use the listing copy from [chrome-store-listing.md](chrome-store-listing.md).
+- Use the disclosure summary from [chrome-store-data-disclosure.md](chrome-store-data-disclosure.md).
+- Publish the privacy policy from [privacy-policy.md](privacy-policy.md).
 - Attach the generated icon set and the files under `store-assets/`.
 
 ## Backend Readiness
