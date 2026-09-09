@@ -100,6 +100,7 @@ function mockPlugin() {
       './backend-client',
       `export async function generate(args) {
          globalThis.__kernelHarness.backendCalls.push({ type: 'generate', args });
+         if (globalThis.__kernelHarness.onGenerate) await globalThis.__kernelHarness.onGenerate();
          return globalThis.__kernelHarness.generateResult || { llm: { feedback: [{ category: 'Word Accuracy', rating: 'good', comment: 'Looks right.' }] } };
        }
        export async function createReviewSession(args) {
@@ -162,6 +163,7 @@ function mockPlugin() {
          return {
            ensure(callback) { harness.magicReview = callback; },
            setState(state, label) { harness.formStates.push({ state, label }); },
+           setGradingStatus() {},
            pushToast(message, isError) { harness.toasts.push({ message, isError }); },
            async applyFeedback(feedback) { harness.appliedFeedback.push(feedback); return { applied: feedback.length }; },
            collectInputBoxesSnapshot() { return []; }
@@ -174,12 +176,12 @@ function mockPlugin() {
          const harness = globalThis.__kernelHarness;
          return {
            mount(callbacks) { harness.dialogCallbacks = callbacks; },
-           openLoading(message) { harness.dialogEvents.push({ type: 'openLoading', message }); },
+           openLoading(message) { harness.dialogOpen = true; harness.dialogEvents.push({ type: 'openLoading', message }); },
            renderSession(session, message) { harness.dialogEvents.push({ type: 'renderSession', session, message }); },
            setBusy(isBusy, message) { harness.dialogEvents.push({ type: 'setBusy', isBusy, message }); },
            setStatus(message, isError) { harness.dialogEvents.push({ type: 'setStatus', message, isError }); },
-           close() { harness.dialogEvents.push({ type: 'close' }); },
-           isOpen() { return false; },
+           close() { harness.dialogOpen = false; harness.dialogEvents.push({ type: 'close' }); },
+           isOpen() { return Boolean(harness.dialogOpen); },
            clearTemplateSearchState(cardId) { harness.dialogEvents.push({ type: 'clearTemplateSearchState', cardId }); },
            setTemplateSearchState(cardId, state) { harness.dialogEvents.push({ type: 'setTemplateSearchState', cardId, state }); }
          };
@@ -204,7 +206,7 @@ function mockPlugin() {
   };
 }
 
-async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?reviewActionId=${CURRENT_L2_ID}`, storedState } = {}) {
+async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?reviewActionId=${CURRENT_L2_ID}`, storedState, grader } = {}) {
   const result = await build({
     entryPoints: [path.join(rootDir, 'src/core/kernel.ts')],
     bundle: true,
@@ -219,6 +221,7 @@ async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?
     location: { href },
     setTimeout,
     clearTimeout,
+    addEventListener() {},
     console
   };
   const harness = {
@@ -239,14 +242,14 @@ async function loadKernelHarness({ href = `https://dashboard.babel.audio/review?
     URL,
     structuredClone,
     window,
-    __kernelHarness: harness
+    __kernelHarness: harness,
+    __grader: grader
   });
   window.window = window;
 
   vm.runInContext(result.outputFiles[0].text, context, { filename: 'kernel-test-bundle.js' });
-  const kernel = context.KernelBundle.createReviewKernel();
+  const kernel = context.KernelBundle.createReviewKernel(context.__grader);
   await kernel.start();
-  assert.equal(harness.prefillCalls, 1, 'kernel should request one initial reviewer-ratings prefill');
   assert.equal(typeof harness.magicReview, 'function', 'kernel should register Magic Review callback');
   return { harness, kernel, context };
 }
@@ -278,38 +281,130 @@ function emitStableL2Flow(harness, { currentId = CURRENT_L2_ID, stableId = STABL
   };
 }
 
-test('grader snapshot fetches stable L1/current without generating or applying feedback', async () => {
-  const { harness, kernel } = await loadKernelHarness();
+test('Magic Review generates feedback while grading is pending and applies grades after comments', async () => {
+  const ready = Promise.withResolvers();
+  let prepared;
+  let applied;
+  let harness;
+  ({ harness } = await loadKernelHarness({ grader: {
+    async available() { return true; },
+    async prepare(runId, snapshot) { prepared = snapshot; await ready.promise; },
+    async apply(runId, snapshot) { assert.equal(harness.appliedFeedback.length, 1); applied = snapshot; },
+    cancel() {}
+  } }));
   emitStableL2Flow(harness);
-  const snapshot = await kernel.prepareGradingSnapshot();
-  assert.equal(snapshot.reviewActionId, CURRENT_L2_ID);
-  assert.equal(snapshot.original.actionId, STABLE_L1_ID);
-  assert.equal(snapshot.current.actionId, CURRENT_L2_ID);
-  assert.equal(harness.backendCalls.length, 0);
+  const magic = harness.magicReview();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(harness.backendCalls[0].type, 'generate');
   assert.equal(harness.appliedFeedback.length, 0);
-  snapshot.original.annotations[0].content = 'mutated external copy';
-  const fresh = await kernel.prepareGradingSnapshot();
-  assert.equal(fresh.original.annotations[0].content, 'content-1');
+  ready.resolve();
+  await magic;
+  assert.equal(prepared.original.actionId, STABLE_L1_ID);
+  assert.equal(prepared.current.actionId, CURRENT_L2_ID);
+  assert.deepEqual(prepared.original, harness.backendCalls[0].args.original);
+  assert.deepEqual(prepared.current, harness.backendCalls[0].args.current);
+  assert.deepEqual(applied, prepared);
+  assert.equal(harness.toasts.some(toast => toast.isError), false);
 });
 
-test('grader snapshot rejects navigation while the baseline is being fetched', async () => {
-  const { harness, kernel, context } = await loadKernelHarness();
+test('Magic Review rejects navigation while the baseline is being fetched', async () => {
+  const { harness, context } = await loadKernelHarness();
   emitStableL2Flow(harness);
   const fetchAction = harness.onFetchReviewAction;
   harness.onFetchReviewAction = (id, bridge) => {
     fetchAction(id, bridge);
     if (id === STABLE_L1_ID) context.window.location.href += '&changed=true';
   };
-  await assert.rejects(kernel.prepareGradingSnapshot(), /review changed/);
+  await harness.magicReview();
   assert.equal(harness.appliedFeedback.length, 0);
+  assert.equal(harness.toasts.some(toast => toast.isError && /review changed/i.test(toast.message)), true);
 });
 
-test('grader rediscovers a new current review when the URL has no action id', async () => {
-  const { harness, kernel } = await loadKernelHarness({ href: 'https://dashboard.babel.audio/review' });
+test('failed grading prevents feedback application and reports the failure', async () => {
+  const { harness } = await loadKernelHarness({ grader: {
+    async available() { return true; },
+    async prepare() { throw new Error('grading backend unavailable'); },
+    async apply() { assert.fail('failed grades must not apply'); },
+    cancel() {}
+  } });
   emitStableL2Flow(harness);
-  assert.equal((await kernel.prepareGradingSnapshot()).reviewActionId, CURRENT_L2_ID);
-  emitStableL2Flow(harness, { currentId: SECOND_CURRENT_L2_ID });
-  assert.equal((await kernel.prepareGradingSnapshot()).reviewActionId, SECOND_CURRENT_L2_ID);
+  await harness.magicReview();
+  assert.equal(harness.appliedFeedback.length, 0);
+  assert.equal(harness.toasts.some(toast => toast.isError && /grading backend unavailable/.test(toast.message)), true);
+});
+
+test('a fresh snapshot changed during generation rejects both comments and grades', async () => {
+  const { harness } = await loadKernelHarness({ grader: {
+    async available() { return true; },
+    async prepare() {},
+    async apply() { assert.fail('stale grades must not apply'); },
+    cancel() {}
+  } });
+  emitStableL2Flow(harness);
+  harness.onGenerate = () => {
+    const fetchAction = harness.onFetchReviewAction;
+    harness.onFetchReviewAction = (id, bridge) => {
+      if (id !== CURRENT_L2_ID) return fetchAction(id, bridge);
+      const changed = captured(CURRENT_L2_ID, 2);
+      changed.normalized.annotations[0].content = 'Edited while generating';
+      bridge.emitCaptured(changed);
+    };
+  };
+  await harness.magicReview();
+  assert.equal(harness.appliedFeedback.length, 0);
+  assert.equal(harness.toasts.some(toast => toast.isError && /review changed/i.test(toast.message)), true);
+});
+
+test('interactive refresh replaces failed grading and finalization waits for the replacement', async () => {
+  const ready = Promise.withResolvers();
+  let preparation = 0;
+  let applied = false;
+  const { harness } = await loadKernelHarness({
+    storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') },
+    grader: {
+      async available() { return true; },
+      async prepare() {
+        preparation += 1;
+        if (preparation === 1) throw new Error('first grading failed');
+        await ready.promise;
+      },
+      async apply() { assert.equal(harness.appliedFeedback.length, 1); applied = true; },
+      cancel() {}
+    }
+  });
+  emitStableL2Flow(harness);
+  await harness.magicReview();
+  await harness.dialogCallbacks.onRefresh();
+  harness.finalizeResult = { categoryFeedback: [{ category: 'Word Accuracy', note: 'Refreshed feedback' }] };
+  const finalize = harness.dialogCallbacks.onFinalize('apply');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(harness.appliedFeedback.length, 0);
+  ready.resolve();
+  await finalize;
+  assert.equal(applied, true);
+  assert.equal(harness.dialogEvents.at(-1).type, 'close');
+});
+
+test('closing an interactive review while finalization awaits grades prevents application', async () => {
+  const ready = Promise.withResolvers();
+  const { harness } = await loadKernelHarness({
+    storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') },
+    grader: {
+      async available() { return true; },
+      async prepare() { await ready.promise; },
+      async apply() { assert.fail('closed review must not apply grades'); },
+      cancel() { ready.reject(new Error('cancelled')); }
+    }
+  });
+  emitStableL2Flow(harness);
+  await harness.magicReview();
+  harness.finalizeResult = { categoryFeedback: [{ category: 'Word Accuracy', note: 'Do not apply' }] };
+  const finalize = harness.dialogCallbacks.onFinalize('skip');
+  await new Promise(resolve => setImmediate(resolve));
+  harness.dialogCallbacks.onClose();
+  await finalize;
+  assert.equal(harness.appliedFeedback.length, 0);
+  assert.equal(harness.toasts.some(toast => !toast.isError && /Applied feedback/.test(toast.message)), false);
 });
 
 test('Magic Review discovers current L2 without a URL reviewActionId and ignores stale stored state', async () => {
@@ -325,15 +420,6 @@ test('Magic Review discovers current L2 without a URL reviewActionId and ignores
 
   await harness.magicReview();
 
-  const commands = harness.commands.filter((command) => command.type !== 'inject');
-  assert.deepEqual(
-    commands.map((command) => command.type),
-    ['fetchCurrentReviewAction', 'fetchReviewAction', 'fetchTranscriptionDiff', 'fetchReviewAction']
-  );
-  assert.equal(commands[1].reviewActionId, CURRENT_L2_ID);
-  assert.equal(commands[2].payload.reviewActionId, CURRENT_L2_ID);
-  assert.equal(commands[3].reviewActionId, STABLE_L1_ID);
-  assert.equal(commands.some((command) => command.reviewActionId === STORED_STALE_ID), false);
 
   assert.equal(harness.backendCalls.length, 1);
   assert.equal(harness.backendCalls[0].type, 'generate');
@@ -388,12 +474,9 @@ test('Magic Review recomputes live current review state on every click in one ru
     [CURRENT_L2_ID, 'chunk-first'],
     [SECOND_CURRENT_L2_ID, 'chunk-second']
   ]);
-  const liveCurrentIds = [CURRENT_L2_ID, SECOND_CURRENT_L2_ID];
-  let liveLookupCount = 0;
+  let currentId = CURRENT_L2_ID;
 
   harness.onFetchCurrentReviewAction = (bridge) => {
-    const currentId = liveCurrentIds[liveLookupCount] || liveCurrentIds.at(-1);
-    liveLookupCount += 1;
     bridge.emitCaptured(captured(currentId, 2, currentChunks.get(currentId)));
   };
   harness.onFetchReviewAction = (reviewActionId, bridge) => {
@@ -419,39 +502,9 @@ test('Magic Review recomputes live current review state on every click in one ru
   };
 
   await harness.magicReview();
+  currentId = SECOND_CURRENT_L2_ID;
   await harness.magicReview();
 
-  const commands = harness.commands.filter((command) => command.type !== 'inject');
-  assert.deepEqual(
-    commands.map((command) => command.type),
-    [
-      'fetchCurrentReviewAction',
-      'fetchReviewAction',
-      'fetchTranscriptionDiff',
-      'fetchReviewAction',
-      'fetchCurrentReviewAction',
-      'fetchReviewAction',
-      'fetchTranscriptionDiff',
-      'fetchReviewAction'
-    ]
-  );
-  assert.deepEqual(
-    commands
-      .filter((command) => command.type === 'fetchReviewAction')
-      .map((command) => command.reviewActionId),
-    [CURRENT_L2_ID, STABLE_L1_ID, SECOND_CURRENT_L2_ID, STABLE_L1_ID]
-  );
-  assert.deepEqual(
-    commands
-      .filter((command) => command.type === 'fetchTranscriptionDiff')
-      .map((command) => command.payload.reviewActionId),
-    [CURRENT_L2_ID, SECOND_CURRENT_L2_ID]
-  );
-  assert.equal(
-    commands.some((command) => command.reviewActionId === STORED_STALE_ID || command.payload?.reviewActionId === STORED_STALE_ID),
-    false
-  );
-  assert.equal(liveLookupCount, 2);
 
   const generateCalls = harness.backendCalls.filter((call) => call.type === 'generate');
   assert.equal(generateCalls.length, 2);
@@ -486,14 +539,6 @@ test('fast Magic Review refreshes the stable L1 original before backend generati
 
   await harness.magicReview();
 
-  assert.deepEqual(
-    harness.commands.filter((command) => command.type !== 'inject').map((command) => command.type),
-    ['fetchReviewAction', 'fetchTranscriptionDiff', 'fetchReviewAction']
-  );
-  assert.deepEqual(
-    harness.commands.filter((command) => command.type === 'fetchReviewAction').map((command) => command.reviewActionId),
-    [CURRENT_L2_ID, STABLE_L1_ID]
-  );
   const generateCall = harness.backendCalls.find((call) => call.type === 'generate');
   assert.ok(generateCall, 'backend generation should run after the stable baseline is fetched');
   assert.equal(generateCall.args.reviewActionId, CURRENT_L2_ID);

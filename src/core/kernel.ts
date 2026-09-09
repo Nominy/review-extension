@@ -1,3 +1,4 @@
+import { gradingSnapshotKey } from '@nominy/babel-babel-runtime';
 import { DEFAULT_SETTINGS, RUNTIME_POLICY, sanitizeSettings } from './runtime-config';
 import {
   createReviewSession,
@@ -16,6 +17,8 @@ import type {
   BabelDiffPayload,
   CapturedNetworkEntry,
   GeneratedReviewResponse,
+  GraderAddon,
+  GradingSnapshot,
   NormalizedReviewAction,
   ReviewKernel,
   ReviewSessionData,
@@ -69,7 +72,18 @@ function cloneComments(session: ReviewSessionData | null): {
   };
 }
 
-export function createReviewKernel(): ReviewKernel {
+interface ReviewRun {
+  id: string;
+  revision: number;
+  route: string;
+  snapshot: GradingSnapshot;
+  key: string;
+  ready: Promise<void>;
+  addonAvailable: boolean;
+  error: Error | null;
+}
+
+export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
   const bridge = createPageBridgeService();
   const form = createReviewFormService();
   const dialog = createReviewDialogService();
@@ -89,7 +103,9 @@ export function createReviewKernel(): ReviewKernel {
   };
 
   let commentSaveTimer = 0;
-  let gradingSnapshotPending = false;
+  let reviewRevision = 0;
+  let activeRun: ReviewRun | null = null;
+  let reviewRoute = window.location.href;
   let commentRevision = 0;
   let savedCommentRevision = 0;
   let commentSaveChain: Promise<void> = Promise.resolve();
@@ -101,6 +117,109 @@ export function createReviewKernel(): ReviewKernel {
     return Array.from(
       new Set([settings.backendBaseUrl, ...settings.backendBaseUrlFallbacks, ...DEFAULT_SETTINGS.backendBaseUrlFallbacks].filter(Boolean))
     );
+  }
+
+  function cancelReviewRun(): void {
+    reviewRevision += 1;
+    const run = activeRun;
+    activeRun = null;
+    if (run?.addonAvailable) grader?.cancel(run.id);
+    if (run?.addonAvailable) form.setGradingStatus('Grading cancelled — run Magic Review again');
+  }
+
+  function checkRoute(): void {
+    if (reviewRoute !== window.location.href) {
+      reviewRoute = window.location.href;
+      cancelReviewRun();
+      updateActiveSession(null);
+      dialog.close();
+    }
+  }
+
+  function assertRun(run: ReviewRun): void {
+    if (activeRun !== run || run.revision !== reviewRevision || run.route !== window.location.href
+      || getLiveReviewActionId() !== run.snapshot.reviewActionId
+      || !state.original || !state.current
+      || gradingSnapshotKey(state.original, state.current) !== run.key) {
+      throw new Error('The review changed. Refresh Magic Review before applying.');
+    }
+  }
+
+  function beginReviewRun(actionId: string, revision: number, route: string): ReviewRun {
+    const pair = requireBaseline();
+    if (revision !== reviewRevision || route !== window.location.href
+      || pair.actionId !== actionId || pair.current.actionId !== actionId) {
+      throw new Error('The review changed. Run Magic Review again.');
+    }
+    const snapshot = { reviewActionId: actionId, original: structuredClone(pair.original), current: structuredClone(pair.current) };
+    const run: ReviewRun = {
+      id: `review-${Date.now()}-${revision}`, revision, route, snapshot,
+      key: gradingSnapshotKey(snapshot.original, snapshot.current),
+      ready: Promise.resolve(), addonAvailable: false, error: null
+    };
+    activeRun = run;
+    if (grader) {
+      form.setGradingStatus('Checking grading…');
+      run.ready = (async () => {
+        run.addonAvailable = await grader.available();
+        assertRun(run);
+        if (!run.addonAvailable) {
+          form.setGradingStatus('Grading unavailable — comments only', true);
+          return;
+        }
+        form.setGradingStatus('Generating grades…');
+        await grader.prepare(run.id, snapshot);
+        assertRun(run);
+        form.setGradingStatus('Grades ready to apply');
+      })().catch(error => {
+        run.error = error instanceof Error ? error : new Error(String(error));
+        if (activeRun === run && run.revision === reviewRevision && run.route === window.location.href) {
+          form.setGradingStatus('Grading failed — retry Magic Review', true);
+          if (dialog.isOpen()) dialog.setStatus(`Review Grader failed: ${run.error.message}`, true);
+          form.setState('error', 'Retry');
+          form.pushToast(`Review Grader failed: ${run.error.message}`, true);
+        }
+      });
+    }
+    return run;
+  }
+
+  async function prepareApplication(run: ReviewRun): Promise<GradingSnapshot> {
+    assertRun(run);
+    await run.ready;
+    assertRun(run);
+    if (run.error) throw run.error;
+    if (!getReviewActionIdFromUrl()) {
+      const captured = waitForCapture('', Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs),
+        action => Number(action.actionLevel) !== 1);
+      bridge.fetchCurrentReviewAction();
+      await captured;
+      assertRun(run);
+    }
+    await refreshLatestCurrent(run.snapshot.reviewActionId);
+    await refreshStableOriginal(run.snapshot.reviewActionId);
+    assertRun(run);
+    return {
+      reviewActionId: run.snapshot.reviewActionId,
+      original: structuredClone(state.original as NormalizedReviewAction),
+      current: structuredClone(state.current as NormalizedReviewAction)
+    };
+  }
+
+  async function applyPreparedGrades(run: ReviewRun, snapshot: GradingSnapshot): Promise<void> {
+    assertRun(run);
+    if (run.addonAvailable) {
+      form.setGradingStatus('Applying grades…');
+      try {
+        await grader?.apply(run.id, snapshot);
+        assertRun(run);
+        form.setGradingStatus('Grades applied');
+      } catch (error) {
+        if (activeRun === run) form.setGradingStatus('Grades not applied — retry Magic Review', true);
+        throw error;
+      }
+    }
+    assertRun(run);
   }
 
   function resetReviewSnapshot(): void {
@@ -224,6 +343,7 @@ export function createReviewKernel(): ReviewKernel {
     }
 
     if (state.reviewActionId && state.reviewActionId !== actionId) {
+      cancelReviewRun();
       state.reviewActionId = actionId;
       state.original = stableOriginal ? normalized : null;
       state.current = normalized;
@@ -586,16 +706,17 @@ export function createReviewKernel(): ReviewKernel {
     };
   }
 
-  async function createInteractiveSession(actionId: string): Promise<ReviewSessionData> {
+  async function createInteractiveSession(run: ReviewRun): Promise<ReviewSessionData> {
     const result = await createReviewSession({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
       backendBaseUrlFallbacks: getBackendBaseCandidates(),
-      reviewActionId: actionId,
-      original: state.original as NormalizedReviewAction,
-      current: state.current as NormalizedReviewAction,
+      reviewActionId: run.snapshot.reviewActionId,
+      original: run.snapshot.original,
+      current: run.snapshot.current,
       babelDiff: state.lastTranscriptionDiff
     });
 
+    assertRun(run);
     resetTemplateSearchState();
     updateActiveSession(result);
     commentRevision = 0;
@@ -605,13 +726,13 @@ export function createReviewKernel(): ReviewKernel {
     return result;
   }
 
-  async function runFastMagicReview(actionId: string): Promise<void> {
+  async function runFastMagicReview(run: ReviewRun): Promise<void> {
     const result = await generate({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
       backendBaseUrlFallbacks: getBackendBaseCandidates(),
-      reviewActionId: actionId,
-      original: state.original as NormalizedReviewAction,
-      current: state.current as NormalizedReviewAction,
+      reviewActionId: run.snapshot.reviewActionId,
+      original: run.snapshot.original,
+      current: run.snapshot.current,
       babelDiff: state.lastTranscriptionDiff
     });
 
@@ -621,21 +742,25 @@ export function createReviewKernel(): ReviewKernel {
       throw new Error('Backend returned empty feedback.');
     }
 
+    const snapshot = await prepareApplication(run);
     const applied = await form.applyFeedback(feedback);
     if (!applied.applied) {
       throw new Error('Could not find review form fields to apply feedback.');
     }
+    await applyPreparedGrades(run, snapshot);
+    activeRun = null;
 
     form.setState('done', `Applied (${applied.applied})`);
     form.pushToast(`Applied feedback to ${applied.applied} categories.`, false);
     window.setTimeout(() => form.setState('idle', 'Magic Review'), 1600);
   }
 
-  async function runInteractiveMagicReview(actionId: string): Promise<void> {
+  async function runInteractiveMagicReview(run: ReviewRun): Promise<void> {
     dialog.openLoading('Preparing review session...');
 
-    const result = await createInteractiveSession(actionId);
+    const result = await createInteractiveSession(run);
     dialog.renderSession(result, 'Expand a change to inspect the system opinion.');
+    if (run.error) throw run.error;
     form.setState('done', 'Review Open');
     form.pushToast('Opened interactive review dialog.', false);
     window.setTimeout(() => form.setState('idle', 'Magic Review'), 1200);
@@ -643,11 +768,27 @@ export function createReviewKernel(): ReviewKernel {
 
   async function refreshInteractiveSession(): Promise<void> {
     const { actionId } = requireBaseline();
+    cancelReviewRun();
+    updateActiveSession(null);
+    const revision = reviewRevision;
+    const route = window.location.href;
     dialog.setBusy(true, 'Refreshing analysis...');
+    form.setGradingStatus('Preparing review…');
 
-    await refreshLatestCurrent(actionId);
-    const session = await createInteractiveSession(actionId);
-    dialog.renderSession(session, 'Refreshed with the latest review state.');
+    try {
+      await refreshLatestCurrent(actionId);
+      await refreshStableOriginal(actionId);
+      const run = beginReviewRun(actionId, revision, route);
+      const session = await createInteractiveSession(run);
+      dialog.renderSession(session, 'Refreshed with the latest review state.');
+      if (run.error) throw run.error;
+    } catch (error) {
+      if (revision === reviewRevision) {
+        cancelReviewRun();
+        form.setGradingStatus('Grading not ready — retry Magic Review', true);
+      }
+      throw error;
+    }
   }
 
   async function generateSuggestionsForSession(): Promise<void> {
@@ -691,6 +832,9 @@ export function createReviewKernel(): ReviewKernel {
       throw new Error('Interactive review session is not ready.');
     }
 
+    const run = activeRun;
+    if (!run) throw new Error('The review changed. Refresh Magic Review before applying.');
+    assertRun(run);
     await saveSessionCommentsNow();
     dialog.setBusy(true, mode === 'apply' ? 'Applying final review...' : 'Applying immediate review...');
     const result = await finalizeReviewSession({
@@ -705,12 +849,15 @@ export function createReviewKernel(): ReviewKernel {
       throw new Error('Interactive review returned empty feedback.');
     }
 
+    const snapshot = await prepareApplication(run);
     const applied = await form.applyFeedback(feedback);
     state.lastAiReview = result.aiReview || { feedback };
 
     if (!applied.applied) {
       throw new Error('Interactive review could not find review form fields.');
     }
+    await applyPreparedGrades(run, snapshot);
+    activeRun = null;
 
     updateActiveSession(null);
     dialog.close();
@@ -720,12 +867,17 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   async function runMagicReview(): Promise<void> {
-    if (state.generating || gradingSnapshotPending) {
+    if (state.generating) {
       return;
     }
 
     state.generating = true;
+    cancelReviewRun();
+    reviewRoute = window.location.href;
+    const revision = reviewRevision;
+    const route = reviewRoute;
     form.setState('loading', 'Finding task...');
+    form.setGradingStatus('Preparing review…');
 
     try {
       resetReviewSnapshot();
@@ -735,14 +887,18 @@ export function createReviewKernel(): ReviewKernel {
       await refreshLatestCurrent(actionId);
       await refreshStableOriginal(actionId);
 
-      requireBaseline();
+      const run = beginReviewRun(actionId, revision, route);
 
       if (state.settings.workflowMode === 'interactive') {
-        await runInteractiveMagicReview(actionId);
+        await runInteractiveMagicReview(run);
       } else {
-        await runFastMagicReview(actionId);
+        await runFastMagicReview(run);
       }
     } catch (error) {
+      if (revision === reviewRevision) {
+        cancelReviewRun();
+        form.setGradingStatus('Grades not applied — retry Magic Review', true);
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (dialog.isOpen()) {
         dialog.setStatus(`Magic Review failed: ${message}`, true);
@@ -758,6 +914,8 @@ export function createReviewKernel(): ReviewKernel {
     dialog.mount({
       onClose: () => {
         void saveSessionCommentsNow();
+        cancelReviewRun();
+        updateActiveSession(null);
         dialog.close();
         form.setState('idle', 'Magic Review');
       },
@@ -783,6 +941,7 @@ export function createReviewKernel(): ReviewKernel {
         try {
           await finalizeInteractiveSession(mode);
         } catch (error) {
+          form.setGradingStatus('Grades not applied — refresh Magic Review', true);
           const message = error instanceof Error ? error.message : String(error);
           dialog.setStatus(message, true);
           form.pushToast(`Apply failed: ${message}`, true);
@@ -828,31 +987,13 @@ export function createReviewKernel(): ReviewKernel {
   }
 
   return {
-    async prepareGradingSnapshot() {
-      if (state.generating || gradingSnapshotPending || dialog.isOpen()) {
-        throw new Error('Finish or close the current Review Helper session before grading.');
-      }
-      const url = window.location.href;
-      gradingSnapshotPending = true;
-      try {
-        resetReviewSnapshot();
-        const actionId = await ensureCurrentReviewActionId();
-        await refreshLatestCurrent(actionId);
-        await refreshStableOriginal(actionId);
-        const pair = requireBaseline();
-        if (window.location.href !== url || pair.actionId !== actionId || pair.current.actionId !== actionId
-          || Number(pair.original.actionLevel) !== 1 || Number(pair.current.actionLevel) <= 1
-          || pair.original.actionId === pair.current.actionId) {
-          throw new Error('The review changed or no stable L1 original is available. Open the current review and try again.');
-        }
-        return { reviewActionId: actionId, original: structuredClone(pair.original), current: structuredClone(pair.current),
-          backendBaseUrl: sanitizeSettings(state.settings).backendBaseUrl };
-      } finally { gradingSnapshotPending = false; }
-    },
     async start(): Promise<void> {
       bridge.inject();
       installDialog();
       bridge.prefillReviewerRatings();
+      window.addEventListener('popstate', checkRoute);
+      window.addEventListener('hashchange', checkRoute);
+      window.addEventListener('pagehide', () => cancelReviewRun());
 
       try {
         const stored = await loadState();
@@ -883,8 +1024,21 @@ export function createReviewKernel(): ReviewKernel {
       });
 
       form.ensure(() => runMagicReview());
+      const revision = reviewRevision;
+      if (grader) {
+        void grader.available().then(available => {
+          if (revision === reviewRevision && !activeRun) {
+            form.setGradingStatus(available ? 'Grading ready' : 'Grading unavailable — reload the addon', !available);
+          }
+        }).catch(() => {
+          if (revision === reviewRevision && !activeRun) form.setGradingStatus('Grading unavailable — reload the addon', true);
+        });
+      } else {
+        form.setGradingStatus('Grading unavailable — comments only');
+      }
     },
     ensureMagicButton(): void {
+      checkRoute();
       bridge.prefillReviewerRatings();
       form.ensure(() => runMagicReview());
     }

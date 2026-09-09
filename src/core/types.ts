@@ -138,15 +138,28 @@ export interface InputSnapshot {
   notes: Array<{ index: number; note: string }>;
 }
 
+export interface GradingSnapshot {
+  reviewActionId: string;
+  original: NormalizedReviewAction;
+  current: NormalizedReviewAction;
+}
+
+export interface GraderAddon {
+  available(): Promise<boolean>;
+  prepare(runId: string, input: GradingSnapshot): Promise<void>;
+  apply(runId: string, input: GradingSnapshot): Promise<void>;
+  cancel(runId: string): void;
+}
+
 export interface ReviewKernel {
   start(): Promise<void>;
   ensureMagicButton(): void;
-  prepareGradingSnapshot(): Promise<{ reviewActionId: string; original: NormalizedReviewAction; current: NormalizedReviewAction; backendBaseUrl: string }>;
 }
 
 export interface MagicButtonController {
   ensure(onClick: () => void | Promise<void>): void;
   setState(mode: 'idle' | 'loading' | 'done' | 'error', label?: string): void;
+  setGradingStatus(message: string, isError?: boolean): void;
   pushToast(message: string, isError: boolean): void;
   applyFeedback(feedback: FeedbackItem[]): Promise<{ applied: number }>;
   collectInputBoxesSnapshot(): InputSnapshot;

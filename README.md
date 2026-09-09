@@ -21,6 +21,12 @@ npm run build:zip
 
 The release build goes to `build/release/`, is locked to `https://reviewgen.ovh`, and excludes local backend controls. The ZIP goes to `.artifacts/babel-review-helper-<version>.zip`. Build and packaging commands do not bump versions.
 
+## Automatic Review Grader
+
+Version 0.3.24 adds compatibility with the automatic [Review Grader](../babel-review-grader-extension/README.md). With the addon installed, Magic Review generates grades alongside feedback and applies them after comments; interactive refreshes regenerate grades. The status above Magic Review shows addon readiness, progress, and failures. Grading failures block comment application; without the addon, Magic Review continues with comments only.
+
+Configure the OpenRouter key in Review Helper and use a backend with `/api/review/grade`. Reload both extensions and refresh the dashboard after updating. Helper 0.3.22 and the original 0.3.23 prerelease use the older, non-automatic integration.
+
 ## Checks
 
 ```sh

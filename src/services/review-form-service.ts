@@ -13,6 +13,8 @@ import type {
 let toastTimer = 0;
 const TOAST_ID = "babel-review-magic-toast";
 const MIN_REVIEW_TEXTAREAS = 4;
+const GRADING_STATUS_ID = "babel-review-grading-status";
+const MAGIC_CONTROLS_ID = "babel-review-magic-controls";
 
 function getReviewContainer(requireWritable = false): HTMLElement | null {
   const textarea = document.querySelector<HTMLTextAreaElement>(
@@ -59,6 +61,9 @@ function ensureStyles(): void {
       #${MAGIC_BUTTON_ID} .babel-review-magic-spinner { display: none; }
       #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-spinner { display: inline-block; }
       #${MAGIC_BUTTON_ID}[data-state="loading"] .babel-review-magic-icon { display: none; }
+      #${MAGIC_CONTROLS_ID} { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 8px; }
+      #${GRADING_STATUS_ID} { margin: 0 0 2px; font-size: 11px; line-height: 1.4; color: #64748b; }
+      #${GRADING_STATUS_ID}[data-error="true"] { color: #b45309; }
       #${TOAST_ID} { position: fixed; right: 18px; bottom: 18px; }
       #${TOAST_ID}.babel-toast-out { opacity: 0; transition: opacity 220ms ease; }
       .babel-toast-bar { display: none; }
@@ -110,6 +115,14 @@ function findCardByCategory(
 }
 
 export function createReviewFormService(): MagicButtonController {
+  let gradingMessage = "Checking grading…";
+  let gradingError = false;
+  function renderGradingStatus(): void {
+    const hint = document.getElementById(GRADING_STATUS_ID);
+    if (!hint) return;
+    if (hint.textContent !== gradingMessage) hint.textContent = gradingMessage;
+    hint.dataset.error = String(gradingError);
+  }
   return {
     ensure(onClick): void {
       ensureStyles();
@@ -117,6 +130,7 @@ export function createReviewFormService(): MagicButtonController {
       const existing = document.getElementById(MAGIC_BUTTON_ID);
       const container = getReviewContainer(true);
       if (!container) {
+        document.getElementById(MAGIC_CONTROLS_ID)?.remove();
         existing?.remove();
         return;
       }
@@ -124,6 +138,7 @@ export function createReviewFormService(): MagicButtonController {
       if (existing && container.contains(existing)) {
         return;
       }
+      document.getElementById(MAGIC_CONTROLS_ID)?.remove();
       existing?.remove();
 
       const button = document.createElement("button");
@@ -139,24 +154,25 @@ export function createReviewFormService(): MagicButtonController {
       `;
       button.addEventListener("click", () => {
         if (!getReviewContainer(true)?.contains(button)) {
+          document.getElementById(MAGIC_CONTROLS_ID)?.remove();
           button.remove();
           return;
         }
         void onClick();
       });
 
-      const heading = findHeading(container, "Review the feedback");
-      if (heading?.parentElement) {
-        heading.parentElement.appendChild(button);
-        return;
-      }
-
       const wrapper = document.createElement("div");
-      wrapper.style.display = "flex";
-      wrapper.style.justifyContent = "flex-end";
-      wrapper.style.marginBottom = "8px";
-      wrapper.appendChild(button);
-      container.prepend(wrapper);
+      wrapper.id = MAGIC_CONTROLS_ID;
+      const hint = document.createElement("div");
+      hint.id = GRADING_STATUS_ID;
+      hint.setAttribute("role", "status");
+      hint.setAttribute("aria-live", "polite");
+      button.setAttribute("aria-describedby", GRADING_STATUS_ID);
+      wrapper.append(hint, button);
+      const heading = findHeading(container, "Review the feedback");
+      if (heading?.parentElement) heading.parentElement.appendChild(wrapper);
+      else container.prepend(wrapper);
+      renderGradingStatus();
     },
     setState(mode, label): void {
       const button = document.getElementById(MAGIC_BUTTON_ID);
@@ -176,6 +192,11 @@ export function createReviewFormService(): MagicButtonController {
       if (labelNode) {
         labelNode.textContent = label || "Magic Review";
       }
+    },
+    setGradingStatus(message, isError = false): void {
+      gradingMessage = message;
+      gradingError = isError;
+      renderGradingStatus();
     },
     pushToast(message, isError): void {
       ensureStyles();
