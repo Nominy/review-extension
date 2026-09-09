@@ -22,7 +22,7 @@ export async function keyedRequest<T>(base: string, path: string, payload?: unkn
   const origin = trustedReviewBase(base);
   if (!(path === '/api/review/key-usage' || path === '/api/review/generate' || path === '/api/review/sessions' || path === '/api/review/grade' || path === '/api/templates-lab/replay' || /^\/api\/review\/sessions\/[a-zA-Z0-9-]+\/template-suggestions$/.test(path))) throw new Error('Unsupported keyed request.');
   const key = await readReviewKey();
-  if (!key) throw new Error('Save your OpenRouter key in Review Helper settings first.');
+  if (!key) throw new Error('OpenRouter API key is not configured. Open Review Helper settings, enter your API key, and click Save key.');
   const response = await fetch(origin + path, {
     method: payload === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', 'X-OpenRouter-Key': key },

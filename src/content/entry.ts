@@ -8,9 +8,8 @@ async function boot(): Promise<void> {
   }
 
   window.__babelReviewKernelInstalled = true;
-  const kernel = createReviewKernel();
+  const kernel = createReviewKernel(registerGraderAddon());
   await kernel.start();
-  registerGraderAddon(kernel);
   registerDomLifecycle(() => kernel.ensureMagicButton());
 }
 
