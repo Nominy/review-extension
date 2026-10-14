@@ -113,11 +113,11 @@ function mockPlugin() {
          globalThis.__kernelHarness.backendCalls.push({ type: 'finalizeReviewSession', args });
          return globalThis.__kernelHarness.finalizeResult;
        }
-       export async function generateReviewSessionSuggestions() { throw new Error('not used'); }
+       export async function generateReviewSessionSuggestions(args) { return globalThis.__kernelHarness.onSuggestions(args); }
        export async function searchReviewTemplates() { throw new Error('not used'); }
        export async function clearReviewSessionCardTemplateMatch() { throw new Error('not used'); }
-       export async function saveReviewSessionComments() { throw new Error('not used'); }
-       export async function updateReviewSessionCardTemplateMatch() { throw new Error('not used'); }`
+       export async function saveReviewSessionComments(args) { return globalThis.__kernelHarness.onSaveComments(args); }
+       export async function updateReviewSessionCardTemplateMatch(args) { return globalThis.__kernelHarness.onTemplateMatch(args); }`
     ],
     [
       '../parsers/review-action-parser',
@@ -660,7 +660,7 @@ async function loadPageBridgeHarness({ resourceUrls = [] } = {}) {
       return resourceUrls.map((name) => ({ name }));
     }
   };
-  const document = { currentScript: { dataset: {} } };
+  const document = { currentScript: { dataset: {} }, querySelectorAll: () => [] };
   class FakeXMLHttpRequest {
     open() {}
     send() {}
@@ -826,4 +826,96 @@ test('page bridge stable-base discovery selects level 1 rather than L0 or minimu
   assert.equal(event.payload.ok, true);
   assert.equal(event.payload.currentReviewActionId, CURRENT_L2_ID);
   assert.equal(event.payload.referenceReviewActionId, STABLE_L1_ID);
+});
+
+test('Grader snapshot refreshes the actual pair independently of Magic Review and returns detached data', async () => {
+  const { harness, kernel } = await loadKernelHarness();
+  emitStableL2Flow(harness);
+  const first = await kernel.getGradingSnapshot();
+  assert.equal(first.original.actionId, STABLE_L1_ID);
+  assert.equal(first.current.actionId, CURRENT_L2_ID);
+  first.current.annotations[0].content = 'Caller mutation';
+  const second = await kernel.getGradingSnapshot();
+  assert.equal(second.current.annotations[0].content, 'content-2');
+  assert.equal(harness.backendCalls.length, 0);
+  assert.equal(harness.appliedFeedback.length, 0);
+});
+
+test('L0 references are rejected instead of being graded as a stable L1 baseline', async () => {
+  const { harness, kernel } = await loadKernelHarness();
+  emitStableL2Flow(harness);
+  const fetch = harness.onFetchReviewAction;
+  harness.onFetchReviewAction = (id, bridge) => {
+    if (id === STABLE_L1_ID) bridge.emitCaptured(captured(id, 0));
+    else fetch(id, bridge);
+  };
+  await assert.rejects(kernel.getGradingSnapshot(), /stable L1/);
+  assert.equal(harness.backendCalls.length, 0);
+});
+
+test('failed comment autosave blocks finalization and successful retry sends the retained comments', async () => {
+  const { harness } = await loadKernelHarness({ storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') } });
+  emitStableL2Flow(harness);
+  await harness.magicReview();
+  harness.dialogCallbacks.onSessionCommentChange('Do not lose this note.');
+  harness.onSaveComments = async () => { throw new Error('Comments offline'); };
+  await harness.dialogCallbacks.onFinalize('apply');
+  assert.equal(harness.backendCalls.some(call => call.type === 'finalizeReviewSession'), false);
+  assert.equal(harness.appliedFeedback.length, 0);
+  assert.ok(harness.toasts.some(toast => /Comments offline/.test(toast.message)));
+  harness.onSaveComments = async args => {
+    assert.equal(args.sessionComment, 'Do not lose this note.');
+    return { sessionId: 'session-1', reviewActionId: CURRENT_L2_ID, cards: [], comments: { sessionComment: args.sessionComment, cardComments: args.cardComments } };
+  };
+  harness.finalizeResult = { categoryFeedback: [{ category: 'Word Accuracy', note: 'Retried feedback' }] };
+  await harness.dialogCallbacks.onFinalize('apply');
+  assert.equal(harness.appliedFeedback.length, 1);
+});
+
+for (const operation of ['suggestions', 'template']) {
+  test(`late ${operation} response cannot resurrect a closed interactive session`, async () => {
+    const { harness } = await loadKernelHarness({ storedState: { sessions: {}, selectedSessionId: '', settings: baseSettings('interactive') } });
+    emitStableL2Flow(harness);
+    await harness.magicReview();
+    const response = Promise.withResolvers();
+    const started = Promise.withResolvers();
+    const backend = async () => { started.resolve(); return response.promise; };
+    harness.onSuggestions = backend;
+    harness.onTemplateMatch = backend;
+    const pending = operation === 'suggestions'
+      ? harness.dialogCallbacks.onGenerateSuggestions()
+      : harness.dialogCallbacks.onTemplateSelect('card-1', 'template-1');
+    await started.promise;
+    harness.dialogCallbacks.onClose();
+    const renders = harness.dialogEvents.filter(event => event.type === 'renderSession').length;
+    response.resolve({ sessionId: 'session-1', reviewActionId: CURRENT_L2_ID, cards: [], comments: { sessionComment: '', cardComments: {} }, suggestions: [] });
+    await pending;
+    assert.equal(harness.dialogEvents.filter(event => event.type === 'renderSession').length, renders);
+    assert.equal(harness.dialogOpen, false);
+    assert.equal(harness.appliedFeedback.length, 0);
+  });
+}
+
+test('Grader snapshot re-discovers same-route task changes without relying on an earlier capture', async () => {
+  const { harness, kernel } = await loadKernelHarness({ href: 'https://dashboard.babel.audio/review' });
+  emitStableL2Flow(harness);
+  const first = await kernel.getGradingSnapshot();
+  assert.equal(first.reviewActionId, CURRENT_L2_ID);
+  emitStableL2Flow(harness, { currentId: SECOND_CURRENT_L2_ID });
+  const second = await kernel.getGradingSnapshot();
+  assert.equal(second.reviewActionId, SECOND_CURRENT_L2_ID);
+  assert.equal(second.current.actionId, SECOND_CURRENT_L2_ID);
+  assert.equal(second.original.actionId, STABLE_L1_ID);
+});
+
+test('late unrelated current and L1 captures do not replace the active comparison', async () => {
+  const { harness } = await loadKernelHarness();
+  emitStableL2Flow(harness);
+  harness.onGenerate = async () => {
+    harness.bridge.emitCaptured(captured(SECOND_CURRENT_L2_ID, 2));
+    harness.bridge.emitCaptured(captured(STORED_STALE_ID, 1));
+  };
+  await harness.magicReview();
+  assert.equal(harness.appliedFeedback.length, 1);
+  assert.equal(harness.toasts.some(toast => toast.isError), false);
 });

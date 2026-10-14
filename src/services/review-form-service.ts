@@ -12,7 +12,7 @@ import type {
 
 let toastTimer = 0;
 const TOAST_ID = "babel-review-magic-toast";
-const MIN_REVIEW_TEXTAREAS = 4;
+const MIN_REVIEW_TEXTAREAS = 5;
 const GRADING_STATUS_ID = "babel-review-grading-status";
 const MAGIC_CONTROLS_ID = "babel-review-magic-controls";
 
@@ -31,6 +31,9 @@ function getReviewContainer(requireWritable = false): HTMLElement | null {
       'textarea[placeholder="Provide specific feedback..."]',
     ).length;
     if (count >= MIN_REVIEW_TEXTAREAS) {
+      if (requireWritable && Array.from(current.querySelectorAll<HTMLTextAreaElement>(
+        'textarea[placeholder="Provide specific feedback..."]',
+      )).some(note => note.disabled || note.readOnly || note.matches(':disabled'))) return null;
       return current;
     }
     current = current.parentElement;
@@ -64,7 +67,7 @@ function ensureStyles(): void {
       #${MAGIC_CONTROLS_ID} { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 8px; }
       #${GRADING_STATUS_ID} { margin: 0 0 2px; font-size: 11px; line-height: 1.4; color: #64748b; }
       #${GRADING_STATUS_ID}[data-error="true"] { color: #b45309; }
-      #${TOAST_ID} { position: fixed; right: 18px; bottom: 18px; }
+      #${TOAST_ID} { position: fixed; right: 18px; bottom: 18px; pointer-events: none; }
       #${TOAST_ID}.babel-toast-out { opacity: 0; transition: opacity 220ms ease; }
       .babel-toast-bar { display: none; }
     `;

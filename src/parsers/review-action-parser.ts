@@ -78,6 +78,7 @@ function normalizeAnnotations(raw: Record<string, unknown>): ReviewAnnotation[] 
         id: typeof record.id === 'string' ? record.id : `idx-${index}`,
         reviewActionId: typeof record.reviewActionId === 'string' ? record.reviewActionId : '',
         type: typeof record.type === 'string' ? record.type : '',
+        intensity: typeof record.intensity === 'number' && Number.isFinite(record.intensity) ? record.intensity : null,
         content: typeof record.content === 'string' ? record.content : '',
         processedRecordingId: typeof record.processedRecordingId === 'string' ? record.processedRecordingId : '',
         startTimeInSeconds: toNumber(record.startTimeInSeconds),
@@ -162,6 +163,9 @@ export function extractNormalizedFromEntry(entry: CapturedNetworkEntry): Normali
     const rawPayload = deepFindPayload(node);
     if (rawPayload) {
       const normalized = normalizePayload(rawPayload, entry.capturedAt);
+      if (normalized.actionLevel > 1 && entry.liveTranscript?.reviewActionId === normalized.actionId) {
+        normalized.annotations = normalizeAnnotations({ annotations: entry.liveTranscript.annotations });
+      }
       for (const recording of normalized.recordings) {
         const resolved = audioUrl(entry.recordingAudioUrls?.[recording.processedRecordingUri || '']);
         if (resolved) recording.processedRecordingUrl = resolved;

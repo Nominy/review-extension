@@ -4,7 +4,7 @@ import { GRADER_PROTOCOL } from '@nominy/babel-babel-runtime';
 import type { GraderAddon, GradingSnapshot } from '../core/types';
 
 /** Optional addon lifecycle and its authenticated grading backend bridge. */
-export function registerGraderAddon(): GraderAddon {
+export function registerGraderAddon(getSnapshot: () => Promise<GradingSnapshot>): GraderAddon {
   const requests = new Map<string, AbortController>();
   const pending = new Map<string, { runId?: string; finish(payload?: { ok?: boolean; error?: string }): void }>();
   let sequence = 0;
@@ -40,6 +40,12 @@ export function registerGraderAddon(): GraderAddon {
     if (message.direction !== 'request') return;
     const reply = (payload: unknown) => window.postMessage({ source: GRADER_PROTOCOL, direction: 'response', requestId: message.requestId, payload }, window.location.origin);
     if (message.operation === 'cancel-grade') { requests.get(message.gradeRequestId)?.abort(); return; }
+    if (message.operation === 'ping') { reply({ ok: true }); return; }
+    if (message.operation === 'snapshot') {
+      try { reply({ ok: true, snapshot: await getSnapshot() }); }
+      catch (error) { reply({ ok: false, error: error instanceof Error ? error.message : String(error) }); }
+      return;
+    }
     if (message.operation !== 'grade') return;
     if (requests.has(message.requestId)) return;
     const controller = new AbortController(); requests.set(message.requestId, controller);

@@ -53,7 +53,7 @@ function responseFromText(bodyText) {
   };
 }
 
-function makeDocument({ scriptTexts = [], visibleText = '' } = {}) {
+function makeDocument({ scriptTexts = [], visibleText = '', nativeAnnotations, nativeSlateChildren } = {}) {
   const scripts = scriptTexts.map((text) => ({
     text,
     textContent: text,
@@ -70,6 +70,18 @@ function makeDocument({ scriptTexts = [], visibleText = '' } = {}) {
     innerText: visibleText,
     innerHTML: visibleText
   };
+  const root = { stateNode: {} };
+  root.stateNode.current = root;
+  const workbench = { return: root, memoizedProps: { reviewActionId: CURRENT_L2_ID, transcriptionChunkProcessedRecordings: [] } };
+  const panel = { return: workbench, memoizedProps: { annotations: nativeAnnotations, saveState: { dirty: true }, renderTranscript() {}, onSave() {} } };
+  const transcript = { return: panel, memoizedProps: { turns: nativeAnnotations, handlers: { onChangeText() {} } } };
+  root.child = workbench; workbench.child = panel; panel.child = transcript;
+  if (nativeSlateChildren) {
+    const turn = { return: transcript, memoizedProps: { turn: nativeAnnotations[0] } };
+    turn.child = { return: turn, memoizedProps: { editor: { children: [{ children: nativeSlateChildren }], apply() {}, insertData() {} } } };
+    transcript.child = turn;
+  }
+  const seed = { '__reactFiber$test': { return: transcript } };
 
   return {
     currentScript: { dataset: {} },
@@ -77,6 +89,7 @@ function makeDocument({ scriptTexts = [], visibleText = '' } = {}) {
     body,
     documentElement,
     querySelectorAll(selector) {
+      if (nativeAnnotations && (String(selector).includes('main') || selector === '*')) return [seed];
       return String(selector).includes('script') ? scripts : [];
     },
     getElementsByTagName(tagName) {
@@ -85,7 +98,7 @@ function makeDocument({ scriptTexts = [], visibleText = '' } = {}) {
   };
 }
 
-async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visibleText = '', fetchResponse } = {}) {
+async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visibleText = '', fetchResponse, nativeAnnotations, nativeSlateChildren } = {}) {
   const result = await build({
     entryPoints: [path.join(rootDir, 'src/content/page-bridge.ts')],
     bundle: true,
@@ -104,7 +117,7 @@ async function loadPageBridgeHarness({ resourceUrls = [], scriptTexts = [], visi
       return resourceUrls.map((name) => ({ name }));
     }
   };
-  const document = makeDocument({ scriptTexts, visibleText });
+  const document = makeDocument({ scriptTexts, visibleText, nativeAnnotations, nativeSlateChildren });
   class FakeXMLHttpRequest {
     responseType = '';
     responseText = '';
@@ -286,5 +299,43 @@ for (const transport of ['fetch', 'xhr']) {
       assert.equal(capture.payload.extractedReviewActionId, scenario.expectedId);
       assert.equal(capture.payload.extractedFrom, scenario.expectedSource);
     }
+  });
+}
+
+test('current native workbench annotations overlay capture without changing the caller network response', async () => {
+  const nativeAnnotations = [{ id: 'live-turn', content: 'Unsaved Slate text', processedRecordingId: 'track', startTimeInSeconds: 1, endTimeInSeconds: 2 }];
+  const harness = await loadPageBridgeHarness({ nativeAnnotations, visibleText: `ID: ${STALE_ID}` });
+  await assertCurrentReviewActionFetchedFromPage(harness);
+  const entry = harness.messages.find(message => message.type === 'review-action-captured').payload;
+  assert.equal(entry.liveTranscript.reviewActionId, CURRENT_L2_ID);
+  assert.equal(entry.liveTranscript.annotations[0].content, 'Unsaved Slate text');
+  assert.equal(JSON.parse(entry.responseBody)[0].result.data.json.annotations[0].content, 'Looks right.');
+});
+
+test('native overlay is never attached to an unrelated task response', async () => {
+  const harness = await loadPageBridgeHarness({ nativeAnnotations: [{ id: 'live-turn', content: 'Unsaved Slate text' }] });
+  const response = await harness.window.fetch('/api/trpc/transcriptions.getReviewActionDataById?batch=1', {
+    method: 'POST', body: JSON.stringify({ 0: { json: { reviewActionId: STALE_ID } } })
+  });
+  assert.equal(JSON.parse(await response.text())[0].result.data.json.actionId, STALE_ID);
+  await flushBridgeMessage(harness.messages, 'review-action-captured');
+  const entry = harness.messages.find(message => message.type === 'review-action-captured').payload;
+  assert.equal(entry.liveTranscript, undefined);
+});
+
+for (const [name, nativeSlateChildren, expected] of [
+  ['raw text and tag', [{ text: 'New ' }, { type: 'tag', raw: '[смех]', children: [{ text: '' }] }, { text: ' text.' }], 'New [смех] text.'],
+  ['empty live text', [{ text: '' }], ''],
+  ['unchanged text', [{ text: 'Committed native text' }], 'Committed native text']
+]) {
+  test(`current capture includes pending native Slate ${name} before debounce without mutating committed annotations`, async () => {
+    const nativeAnnotations = [{ id: 'live-turn', content: 'Committed native text', processedRecordingId: 'track', startTimeInSeconds: 1, endTimeInSeconds: 2, metadata: { assertion: true } }];
+    const harness = await loadPageBridgeHarness({ nativeAnnotations, nativeSlateChildren });
+    await assertCurrentReviewActionFetchedFromPage(harness);
+    const entry = harness.messages.find(message => message.type === 'review-action-captured').payload;
+    assert.equal(entry.liveTranscript.annotations[0].content, expected);
+    assert.equal(entry.liveTranscript.annotations[0].metadata.assertion, true);
+    assert.equal(nativeAnnotations[0].content, 'Committed native text');
+    assert.equal(JSON.parse(entry.responseBody)[0].result.data.json.annotations[0].content, 'Looks right.');
   });
 }

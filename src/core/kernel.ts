@@ -337,10 +337,12 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
       state.current.actionId !== actionId &&
       Number(state.current.actionLevel) !== 1
     ) {
-      state.original = normalized;
+      if (state.original?.actionId === actionId) state.original = normalized;
       resolveCaptureWaiters(actionId, normalized, entry);
       return;
     }
+    const liveActionId = getReviewActionIdFromUrl();
+    if (!stableOriginal && liveActionId && actionId !== liveActionId) return;
 
     if (state.reviewActionId && state.reviewActionId !== actionId) {
       cancelReviewRun();
@@ -507,7 +509,9 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
     window.clearTimeout(commentSaveTimer);
     commentSaveTimer = window.setTimeout(() => {
       commentSaveTimer = 0;
-      void saveSessionCommentsNow();
+      void saveSessionCommentsNow().catch(error => {
+        dialog.setStatus(`Comments were not saved: ${error instanceof Error ? error.message : String(error)}`, true);
+      });
     }, 500);
   }
 
@@ -550,15 +554,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
         }
       });
 
-    try {
-      await commentSaveChain;
-    } catch (error) {
-      console.warn(
-        `[babel-review] failed to save session comments: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
+    await commentSaveChain;
   }
 
   function resetTemplateSearchState(): void {
@@ -586,8 +582,15 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
     }
   }
 
+  function assertSession(sessionId: string, route: string): void {
+    if (state.activeSession?.sessionId !== sessionId || window.location.href !== route) {
+      throw new Error('The review session changed. Refresh Magic Review before continuing.');
+    }
+  }
+
   function scheduleTemplateSearch(cardId: string, query: string): void {
     const sessionId = state.activeSession?.sessionId;
+    const route = window.location.href;
     if (!sessionId) {
       return;
     }
@@ -621,7 +624,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
           limit: 6
         });
 
-        if (templateSearchRevisions.get(cardId) !== nextRevision) {
+        if (state.activeSession?.sessionId !== sessionId || route !== window.location.href || templateSearchRevisions.get(cardId) !== nextRevision) {
           return;
         }
 
@@ -631,7 +634,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
           results: (result.results || []) as TemplateSearchResult[]
         });
       } catch (error) {
-        if (templateSearchRevisions.get(cardId) !== nextRevision) {
+        if (state.activeSession?.sessionId !== sessionId || route !== window.location.href || templateSearchRevisions.get(cardId) !== nextRevision) {
           return;
         }
         dialog.setTemplateSearchState(cardId, {
@@ -640,7 +643,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
           results: []
         });
       } finally {
-        templateSearchTimers.delete(cardId);
+        if (templateSearchTimers.get(cardId) === timer) templateSearchTimers.delete(cardId);
       }
     }, 280);
 
@@ -649,11 +652,13 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
 
   async function assignCardTemplateMatch(cardId: string, templateId: string): Promise<void> {
     const sessionId = state.activeSession?.sessionId;
+    const route = window.location.href;
     if (!sessionId) {
       throw new Error('Interactive review session is not ready.');
     }
 
     await saveSessionCommentsNow();
+    assertSession(sessionId, route);
     dialog.setBusy(true, 'Applying manual template match...');
     const session = await updateReviewSessionCardTemplateMatch({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
@@ -662,6 +667,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
       cardId,
       templateId
     });
+    assertSession(sessionId, route);
     updateActiveSession(session);
     clearTemplateSearchController(cardId);
     dialog.renderSession(session, 'Template match updated for this change.');
@@ -669,11 +675,13 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
 
   async function clearCardTemplateMatch(cardId: string): Promise<void> {
     const sessionId = state.activeSession?.sessionId;
+    const route = window.location.href;
     if (!sessionId) {
       throw new Error('Interactive review session is not ready.');
     }
 
     await saveSessionCommentsNow();
+    assertSession(sessionId, route);
     dialog.setBusy(true, 'Removing template match...');
     const session = await clearReviewSessionCardTemplateMatch({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
@@ -681,6 +689,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
       sessionId,
       cardId
     });
+    assertSession(sessionId, route);
     updateActiveSession(session);
     clearTemplateSearchController(cardId);
     dialog.renderSession(session, 'Template removed from this change.');
@@ -698,6 +707,10 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
     const actionId = requireActionId();
     if (!state.original || !state.current) {
       throw new Error('No ORIGINAL/CURRENT state captured yet.');
+    }
+    if (state.current.actionId !== actionId || state.current.actionLevel <= 1
+      || state.original.actionId === actionId || state.original.actionLevel !== 1) {
+      throw new Error('A stable L1 original and current reviewer transcript are required.');
     }
     return {
       actionId,
@@ -793,23 +806,27 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
 
   async function generateSuggestionsForSession(): Promise<void> {
     const sessionId = state.activeSession?.sessionId;
+    const route = window.location.href;
     if (!sessionId) {
       throw new Error('Interactive review session is not ready.');
     }
 
     await saveSessionCommentsNow();
+    assertSession(sessionId, route);
     dialog.setBusy(true, 'Generating template suggestions...');
     const session = await generateReviewSessionSuggestions({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
       backendBaseUrlFallbacks: getBackendBaseCandidates(),
       sessionId
     });
+    assertSession(sessionId, route);
     updateActiveSession(session);
     dialog.renderSession(session, session.suggestions?.length ? 'Suggestions ready for review.' : 'No suggestions were generated.');
   }
 
   async function decideSuggestion(proposalId: string, decision: 'approved' | 'rejected'): Promise<void> {
     const sessionId = state.activeSession?.sessionId;
+    const route = window.location.href;
     if (!sessionId) {
       throw new Error('Interactive review session is not ready.');
     }
@@ -822,6 +839,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
       proposalId,
       decision
     });
+    assertSession(sessionId, route);
     updateActiveSession(session);
     dialog.renderSession(session, decision === 'approved' ? 'Suggestion approved.' : 'Suggestion rejected.');
   }
@@ -836,6 +854,7 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
     if (!run) throw new Error('The review changed. Refresh Magic Review before applying.');
     assertRun(run);
     await saveSessionCommentsNow();
+    assertRun(run);
     dialog.setBusy(true, mode === 'apply' ? 'Applying final review...' : 'Applying immediate review...');
     const result = await finalizeReviewSession({
       backendBaseUrl: state.settings.backendBaseUrl.trim(),
@@ -913,7 +932,9 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
   function installDialog(): void {
     dialog.mount({
       onClose: () => {
-        void saveSessionCommentsNow();
+        void saveSessionCommentsNow().catch(error => {
+          form.pushToast(`Comments were not saved: ${error instanceof Error ? error.message : String(error)}`, true);
+        });
         cancelReviewRun();
         updateActiveSession(null);
         dialog.close();
@@ -1036,6 +1057,24 @@ export function createReviewKernel(grader?: GraderAddon): ReviewKernel {
       } else {
         form.setGradingStatus('Grading unavailable — comments only');
       }
+    },
+    async getGradingSnapshot(): Promise<GradingSnapshot> {
+      checkRoute();
+      const route = window.location.href;
+      if (!getReviewActionIdFromUrl()) {
+        const captured = waitForCapture('', Number(state.settings.refreshTimeoutMs || DEFAULT_SETTINGS.refreshTimeoutMs),
+          action => action.actionLevel > 1);
+        bridge.fetchCurrentReviewAction();
+        await captured;
+      }
+      const actionId = await ensureCurrentReviewActionId();
+      await refreshLatestCurrent(actionId);
+      await refreshStableOriginal(actionId);
+      const pair = requireBaseline();
+      if (route !== window.location.href || pair.actionId !== actionId) {
+        throw new Error('The review changed while reading the transcript. Try again.');
+      }
+      return { reviewActionId: actionId, original: structuredClone(pair.original), current: structuredClone(pair.current) };
     },
     ensureMagicButton(): void {
       checkRoute();

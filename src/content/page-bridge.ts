@@ -1,3 +1,5 @@
+import { acquireFeedbackDraftGate, readBabelTranscriptBindings } from '@nominy/babel-babel-runtime';
+import type { FeedbackDraftGate } from '@nominy/babel-babel-runtime';
 import {
   COMMAND_FETCH_CURRENT_REVIEW_ACTION,
   COMMAND_FETCH_REVIEW_ACTION,
@@ -187,6 +189,20 @@ function postPayload(type: string, payload: unknown): void {
 
 
 function sendPayload(type: string, payload: unknown): void {
+  if (type === EVENT_REVIEW_ACTION_CAPTURED) {
+    const entry = payload as CapturedNetworkEntry;
+    const action = extractNormalizedFromEntry(entry);
+    const live = action && action.actionLevel > 1 ? readBabelTranscriptBindings(document) : null;
+    if (live && live.reviewActionId === action?.actionId) {
+      const annotations = Object.keys(live.pendingTextById).length
+        ? live.annotations.map(annotation => {
+          const content = live.pendingTextById[annotation.id];
+          return content === undefined ? annotation : { ...annotation, content };
+        })
+        : live.annotations;
+      payload = { ...entry, liveTranscript: { reviewActionId: live.reviewActionId, annotations } };
+    }
+  }
   window.postMessage(
     {
       source: EVENT_SOURCE,
@@ -512,6 +528,7 @@ function findCurrentReviewActionIdFromPerformance(): string {
 
 function findCurrentReviewActionIdFromPageContext(): { reviewActionId: string; source: string } {
   const sources: Array<[string, () => string]> = [
+    ['native-transcript', () => readBabelTranscriptBindings(document)?.reviewActionId || ''],
     ['react-page-context', findCurrentReviewActionIdFromReactInternals],
     ['visible-support-id', findCurrentReviewActionIdFromVisibleText],
     ['performance', findCurrentReviewActionIdFromPerformance],
@@ -1212,4 +1229,7 @@ function handleCommand(event: MessageEvent): void {
 if (!window.__babelReviewPageBridgeInstalled) {
   window.__babelReviewPageBridgeInstalled = true;
   window.addEventListener('message', handleCommand);
+  let feedbackDraftGate: FeedbackDraftGate | null = acquireFeedbackDraftGate('babel-review');
+  window.addEventListener('pagehide', () => { feedbackDraftGate?.dispose(); feedbackDraftGate = null; });
+  window.addEventListener('pageshow', () => { feedbackDraftGate ??= acquireFeedbackDraftGate('babel-review'); });
 }

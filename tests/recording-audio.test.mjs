@@ -26,3 +26,27 @@ test('failed URL lookup preserves transcript capture and rejects unsafe schemes'
   assert.equal(audioUrl('javascript:alert(1)'), '');
   assert.equal(audioUrl('https://name:password@cdn.example/file'), '');
 });
+
+test('committed native annotations replace saved current content including deletions without changing recordings', () => {
+  const saved = { actionId: 'task', actionLevel: 2, annotations: [{ id: 'old', content: 'Saved text' }] };
+  const responseBody = JSON.stringify({ result: { data: { json: saved } } });
+  const liveTranscript = { reviewActionId: 'task', annotations: [
+    { id: 'new', type: 'transcription', intensity: 2, content: 'Unsaved native Slate edit', processedRecordingId: 'track', startTimeInSeconds: 2, endTimeInSeconds: 3, metadata: { source: 'native' } }
+  ] };
+  const current = extractNormalizedFromEntry({ ...entry, responseBody, liveTranscript });
+  assert.equal(current.annotations.length, 1);
+  assert.equal(current.annotations[0].id, 'new');
+  assert.equal(current.annotations[0].content, 'Unsaved native Slate edit');
+  assert.equal(current.annotations[0].type, 'transcription');
+  assert.equal(current.annotations[0].intensity, 2);
+  assert.deepEqual(current.annotations[0].metadata, { source: 'native' });
+  assert.deepEqual(extractNormalizedFromEntry({ ...entry, responseBody, liveTranscript: { ...liveTranscript, annotations: [] } }).annotations, []);
+});
+
+test('live transcript never overlays an L1 reference or a different task capture', () => {
+  for (const [actionId, actionLevel] of [['task', 1], ['other-task', 2]]) {
+    const responseBody = JSON.stringify({ result: { data: { json: { actionId, actionLevel, annotations: [{ id: 'original', content: 'Stable reference' }] } } } });
+    const normalized = extractNormalizedFromEntry({ ...entry, responseBody, liveTranscript: { reviewActionId: 'task', annotations: [{ id: 'edited', content: 'Wrong current' }] } });
+    assert.equal(normalized.annotations[0].content, 'Stable reference');
+  }
+});

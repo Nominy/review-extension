@@ -1,4 +1,5 @@
 import { createReviewKernel } from '../core/kernel';
+import type { ReviewKernel } from '../core/types';
 import { registerDomLifecycle } from '@nominy/babel-babel-runtime';
 import { registerGraderAddon } from '../services/grader-addon-service';
 
@@ -8,7 +9,7 @@ async function boot(): Promise<void> {
   }
 
   window.__babelReviewKernelInstalled = true;
-  const kernel = createReviewKernel(registerGraderAddon());
+  const kernel: ReviewKernel = createReviewKernel(registerGraderAddon(() => kernel.getGradingSnapshot()));
   await kernel.start();
   registerDomLifecycle(() => kernel.ensureMagicButton());
 }

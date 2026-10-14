@@ -7,6 +7,7 @@
 
 export interface CapturedNetworkEntry {
   recordingAudioUrls?: Record<string, string>;
+  liveTranscript?: { reviewActionId: string; annotations: ReviewAnnotation[] };
   transport: 'fetch' | 'xhr';
   endpoint: string;
   method: string;
@@ -29,6 +30,7 @@ export interface ReviewAnnotation {
   id: string;
   reviewActionId: string;
   type: string;
+  intensity?: number | null;
   content: string;
   processedRecordingId: string;
   startTimeInSeconds: number;
@@ -153,6 +155,7 @@ export interface GraderAddon {
 
 export interface ReviewKernel {
   start(): Promise<void>;
+  getGradingSnapshot(): Promise<GradingSnapshot>;
   ensureMagicButton(): void;
 }
 

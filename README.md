@@ -27,6 +27,10 @@ Version 0.3.24 adds compatibility with the automatic [Review Grader](../babel-re
 
 Configure the OpenRouter key in Review Helper and use a backend with `/api/review/grade`. Reload both extensions and refresh the dashboard after updating. Helper 0.3.22 and the original 0.3.23 prerelease use the older, non-automatic integration.
 
+Review compares the stable L1 reference with the current native transcript, including unsaved Slate text and annotation metadata. Navigation, changed evidence and readonly controls prevent stale application. Interactive finalization also stops if reviewer comments could not be saved; retry keeps those comments.
+
+Review owns a lease on the shared native feedback-draft hydration gate. The gate waits for Babel's feedback field definitions to commit before delivering the unchanged draft response, preserving saved comments and ratings on cold reload without requiring Babel Helper. Babel Helper's `feedbackDraftRestore` switch controls its own lease only: turning it off does not disable protection while Review remains active. With Helper alone and that switch off, native behavior is unchanged. Navigation/disposal releases pending holds; the gate never rewrites response bodies or replaces another extension's fetch wrapper.
+
 ## Checks
 
 ```sh

@@ -1,9 +1,9 @@
 import { test, expect } from '@nominy/babel-extension-e2e/test'
+import { TEXT as TRANSCRIPT, editText, saved, listenThrough } from '@nominy/babel-extension-e2e/native-helpers';
 
 const MAGIC = '#babel-review-magic-button';
 const WORKSPACE = '.br-overlay-dialog';
 const FEEDBACK = 'textarea[placeholder="Provide specific feedback..."]';
-const TRANSCRIPT = 'textarea[placeholder="What was said…"]';
 const SETTINGS = 'babel.review.settings.v1';
 const CATEGORY_PREFIX = {
   'Word Accuracy': 'wordAccuracy',
@@ -170,12 +170,11 @@ async function closeNativeFeedback(page) {
   await panel.locator('button').filter({ has: page.locator('svg') }).first().click();
 }
 
-async function editCurrentTranscript(page, text) {
+async function editCurrentTranscript(page, babel, text) {
   await closeNativeFeedback(page);
-  await page.locator(TRANSCRIPT).first().fill(text);
-  await page.locator(TRANSCRIPT).first().press('Enter');
-  await page.getByRole('button', { name: 'Save progress', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
+  await editText(page, 0, text);
+  const state = await saved(page, babel);
+  expect(state.action.annotations.some((row) => row.content === text)).toBe(true);
   await page.getByRole('button', { name: 'Feedback', exact: true }).click();
   await expect(page.locator(MAGIC)).toBeVisible();
 }
@@ -266,7 +265,7 @@ test.describe('Review: real injected extension and native feedback', () => {
     const first = await generateFast(page);
     await expectDeliveredFeedback(page, first.body.llm.feedback);
     const edited = 'Привет, это исправленная проверка текущего текста.';
-    await editCurrentTranscript(page, edited);
+    await editCurrentTranscript(page, babel, edited);
     const second = await generateFast(page);
     expectStableComparison(second.request, await babel.state());
     expect(second.request.original.annotations).toEqual(first.request.original.annotations);
@@ -549,6 +548,7 @@ for (const reviewFlavor of ['dev', 'release']) {
       const result = await generateFast(page);
       await expectDeliveredFeedback(page, result.body.llm.feedback);
       await closeNativeFeedback(page);
+      await listenThrough(page);
       const analytics = [];
       const observer = (request) => {
         if (request.method() !== 'POST' || !request.url().includes('submitTranscriptReviewAction')) return;
@@ -578,3 +578,60 @@ for (const reviewFlavor of ['dev', 'release']) {
     });
   });
 }
+
+test.describe('Review and Grader coinstalled lifecycle', () => {
+  test.use({ scenario: 'review', extensions: ['review', 'grader'], reviewFlavor: 'dev' });
+
+  test('Magic Review applies automatically prepared grades after feedback and native autosave persists both', async ({ page, babel }) => {
+    await configureReview(page, babel);
+    await expect(page.locator('#babel-review-grading-status')).toHaveText('Grading ready');
+    const gradeResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/review/grade');
+    const generated = await generateFast(page);
+    const grades = await (await gradeResponse).json();
+    await expectDeliveredFeedback(page, generated.body.llm.feedback);
+    await expect(page.locator('#babel-review-grading-status')).toHaveText('Grades applied');
+    for (const grade of grades.grades) await expect(page.locator(`#${CATEGORY_PREFIX[grade.category]}-${grade.score}`)).toHaveAttribute('aria-checked', 'true');
+    const persisted = page.waitForResponse(response => response.url().includes('transcriptionFeedbackForm.saveDraft') &&
+      response.request().postData()?.includes('Keep coinstalled review results.'));
+    await page.getByPlaceholder('Additional feedback...', { exact: true }).fill('Keep coinstalled review results.');
+    expect((await persisted).ok()).toBe(true);
+    await page.reload();
+    await expectDeliveredFeedback(page, generated.body.llm.feedback);
+    for (const grade of grades.grades) await expect(page.locator(`#${CATEGORY_PREFIX[grade.category]}-${grade.score}`)).toHaveAttribute('aria-checked', 'true');
+    expect((await babel.state()).submissions ?? []).toHaveLength(0);
+  });
+
+  test('closing a pending standalone grade cancels its request and reopening does not revive it', async ({ page, babel }) => {
+    await configureReview(page, babel);
+    await babel.control({ routes: { '/api/review/grade': { delayMs: 10000, times: 1 } } });
+    await page.getByRole('button', { name: 'Grade review', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Babel Review Grader', exact: true });
+    const requested = page.waitForRequest(request => new URL(request.url()).pathname === '/api/review/grade');
+    await dialog.getByRole('button', { name: 'Generate grades', exact: true }).click();
+    await requested;
+    const cancelled = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname === '/api/review/grade');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await cancelled;
+    await page.getByRole('button', { name: 'Grade review', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Apply grades', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('combobox')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Generate grades', exact: true })).toBeEnabled();
+  });
+
+  test('completed preview keeps manual overrides across close but clears on route changes', async ({ page, babel }) => {
+    await configureReview(page, babel);
+    await page.getByRole('button', { name: 'Grade review', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Babel Review Grader', exact: true });
+    await dialog.getByRole('button', { name: 'Generate grades', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Apply grades', exact: true })).toBeEnabled();
+    await dialog.getByRole('combobox', { name: 'Word Accuracy grade', exact: true }).selectOption('3');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Grade review', exact: true }).click();
+    await expect(dialog.getByRole('combobox', { name: 'Word Accuracy grade', exact: true })).toHaveValue('3');
+    await page.evaluate(() => { location.hash = 'review-grader-route-change'; });
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole('button', { name: 'Grade review', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Apply grades', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('combobox')).toHaveCount(0);
+  });
+});
